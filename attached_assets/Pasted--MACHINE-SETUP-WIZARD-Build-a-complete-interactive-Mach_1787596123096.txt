@@ -1,0 +1,253 @@
+# MACHINE SETUP WIZARD
+
+Build a complete interactive Machine Setup Wizard for each CNC controller/head. The wizard must guide the operator through configuring the physical machine and must support independent configurations for Head 1 and Head 2.
+
+## 1. CONTROLLER CONNECTION
+
+Allow the operator to select:
+
+- Head 1 or Head 2
+- Serial/COM port
+- Baud rate
+
+Then explicitly connect to the selected GRBL controller and display:
+
+- Connection status
+- GRBL firmware/version
+- Controller state
+- Current machine position
+
+The wizard must clearly show which physical head is currently being configured.
+
+## 2. AXIS / MOTOR DIRECTION SETUP
+
+Provide an interactive section for determining the physical direction of each motor.
+
+For each axis:
+
+- X
+- Y
+- Z
+
+Provide:
+
+- Test movement in positive direction
+- Test movement in negative direction
+- Current direction setting
+- Normal / Inverted option
+- Save / Apply option
+
+The operator must determine which physical movement corresponds to:
+
+X+ / X-
+Y+ / Y-
+Z+ / Z-
+
+Example:
+
+X AXIS
+[ MOVE X+ ] [ MOVE X- ]
+Direction: [ Normal / Inverted ]
+
+Y AXIS
+[ MOVE Y+ ] [ MOVE Y- ]
+Direction: [ Normal / Inverted ]
+
+Z AXIS
+[ MOVE Z+ ] [ MOVE Z- ]
+Direction: [ Normal / Inverted ]
+
+Do not assume the motor directions. The configuration must be determined by the operator and stored independently for each head.
+
+Every test movement must require an explicit operator action and confirmation. Never move an axis automatically.
+
+## 3. STEPS / MM CALIBRATION
+
+Provide a calibration section for X, Y and Z.
+
+For each axis display:
+
+Current Steps/mm
+Test Distance
+Commanded Distance
+Actual Measured Distance
+Calculated Steps/mm
+
+Allow the operator to perform a controlled test movement, measure the actual physical movement, and calculate the corrected steps/mm using:
+
+New Steps/mm =
+Current Steps/mm × Commanded Distance / Actual Distance
+
+Provide:
+
+[ CALCULATE ]
+[ APPLY ]
+
+Never change steps/mm without explicit operator confirmation.
+
+## 4. LIMIT SWITCH SETUP
+
+Provide a complete Limit Switch Configuration screen.
+
+Support every possible limit position:
+
+X+
+X-
+Y+
+Y-
+Z+
+Z-
+
+For each switch display:
+
+- Enabled / Disabled
+- Current Triggered / Not Triggered state
+- Physical position
+- Limit-switch logic/inversion if required
+
+Provide a live visual representation of the machine showing the limit-switch locations.
+
+Allow the operator to physically trigger each switch and verify that the correct switch is detected.
+
+Example:
+
+X+ Limit → Triggered / Not Triggered
+X- Limit → Triggered / Not Triggered
+Y+ Limit → Triggered / Not Triggered
+Y- Limit → Triggered / Not Triggered
+Z+ Limit → Triggered / Not Triggered
+Z- Limit → Triggered / Not Triggered
+
+If the detected logic is reversed, provide an option to invert the limit-switch logic.
+
+## 5. HARD LIMITS
+
+Provide:
+
+Hard Limits: Enabled / Disabled
+Hard Limit Invert: Enabled / Disabled
+
+Show the exact configuration before applying it.
+
+Require explicit confirmation before writing changes to GRBL.
+
+## 6. HOMING CONFIGURATION
+
+Provide configuration for:
+
+- Homing enabled/disabled
+- Homing seek rate
+- Homing feed rate
+- Homing pull-off
+- Homing cycle configuration
+
+Clearly show which axes will move during homing.
+
+Provide:
+
+[ TEST HOMING ]
+
+but require explicit operator confirmation before executing the homing cycle.
+
+Never automatically home the machine.
+
+## 7. MACHINE TRAVEL / SOFT LIMITS
+
+Allow configuration of:
+
+X Maximum Travel
+Y Maximum Travel
+Z Maximum Travel
+
+Also provide:
+
+Soft Limits: Enabled / Disabled
+
+Clearly distinguish between:
+
+- Machine Coordinates
+- Work Coordinates
+- Maximum Machine Travel
+
+## 8. MACHINE CONFIGURATION SUMMARY
+
+At the end of the wizard, display a complete summary:
+
+Controller: Head 1 / Head 2
+Serial Port
+Baud Rate
+Firmware
+
+Axis Directions:
+X
+Y
+Z
+
+Steps/mm:
+X
+Y
+Z
+
+Limit Switches:
+X+
+X-
+Y+
+Y-
+Z+
+Z-
+
+Hard Limits
+Soft Limits
+Homing Configuration
+Maximum Travel
+
+Provide:
+
+[ BACK ]
+[ EDIT ]
+[ APPLY CONFIGURATION ]
+[ FINISH ]
+
+Before applying anything, show exactly what values will be changed and require explicit confirmation.
+
+## 9. MULTI-HEAD INDEPENDENCE
+
+Head 1 and Head 2 must have completely independent configurations.
+
+Head 1 must have its own:
+
+- Axis directions
+- Steps/mm
+- Limit switches
+- Hard limits
+- Soft limits
+- Homing settings
+- Machine travel
+- GRBL configuration
+
+Head 2 must have its own independent configuration.
+
+Changing Head 1 must never modify Head 2.
+
+## 10. SAFETY
+
+The Setup Wizard controls a physical CNC machine.
+
+Never perform movement automatically.
+
+Never automatically:
+
+- Jog
+- Home
+- Move an axis
+- Change motor direction
+- Change steps/mm
+- Change limit-switch configuration
+- Change homing configuration
+- Enable/disable safety features
+
+Every physical movement requires an explicit operator action.
+
+Every configuration change that is written to GRBL requires explicit confirmation.
+
+Always display the currently selected controller/head, connection state, machine state, and current machine position so the operator always knows which physical machine is being configured.

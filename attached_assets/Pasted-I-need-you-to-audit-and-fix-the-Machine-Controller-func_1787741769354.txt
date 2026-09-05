@@ -1,0 +1,253 @@
+I need you to audit and fix the Machine Controller functionality for Head 1 and Head 2.
+
+IMPORTANT:
+- Do NOT redesign the UI.
+- Do NOT remove existing features.
+- Do NOT change the Machine Agent architecture unless required to fix an identified bug.
+- Do NOT remove or weaken any existing safety confirmations.
+- Do NOT change the behavior that is already working correctly for Head 1.
+- Head 1 is currently our reference implementation because its features are working.
+- Every feature that works for Head 1 must work equivalently and independently for Head 2.
+- Preserve the existing API and Machine Agent contracts unless a concrete bug requires a compatible correction.
+- Do not delete the console/history from the UI.
+- Do not hide the console after commands are sent.
+- The operator must always be able to see the console output and follow it.
+
+TASK 1 — FULL HEAD 1 vs HEAD 2 AUDIT
+
+Perform a complete feature-by-feature audit comparing Head 1 and Head 2.
+
+Use Head 1 as the reference.
+
+For every Head 1 feature, verify that Head 2 has the same functionality and that the request is actually routed to controller/head 2 rather than accidentally using head 1.
+
+Audit at minimum:
+
+1. Serial port discovery
+2. COM port selection
+3. Connect
+4. Disconnect
+5. Connection state
+6. GRBL initialization
+7. Firmware information
+8. GRBL status
+9. DRO / X/Y/Z positions
+10. Alarm state
+11. Home
+12. Unlock
+13. Reset
+14. Jog
+15. Feed rate handling
+16. Work zero
+17. Work offset
+18. GRBL settings read
+19. GRBL settings refresh
+20. GRBL settings write
+21. Console commands
+22. G-code streaming
+23. Pause
+24. Resume
+25. Stop
+26. Live telemetry / SSE
+27. Error handling
+28. Confirmation/safety handling
+29. UI loading states
+30. UI success/error messages
+
+Do not assume that because the UI contains a Head 2 button that Head 2 actually works.
+
+Trace each Head 2 action through the complete chain:
+
+UI
+→ frontend API/request
+→ Machine Agent endpoint
+→ head ID/controller ID
+→ UGS Core controller
+→ selected COM port
+→ response/telemetry
+→ UI state
+
+Find where Head 2 diverges from Head 1.
+
+TASK 2 — FIX HEAD 2 CONNECTION
+
+There is currently a specific bug:
+
+- The second COM port appears in the UI.
+- I select the COM port for Head 2.
+- I click Connect.
+- Nothing happens.
+- Head 2 remains disconnected.
+
+Investigate the complete connection flow.
+
+Verify:
+- The Head 2 connect button actually fires.
+- The correct head ID is sent.
+- The selected COM port is included in the request.
+- The backend receives the request.
+- The Machine Agent routes the request to Head 2.
+- Head 2 has its own UGS GrblController instance/session.
+- Head 2 is not accidentally referencing Head 1's controller/session/state.
+- The selected COM port is not silently ignored.
+- One-port/one-head enforcement still works.
+- Connection errors are surfaced to the UI.
+- The UI does not silently swallow the error.
+
+Fix the actual root cause.
+
+Do NOT implement a fake successful connection.
+
+TASK 3 — FIX JOG
+
+Jog currently does not work.
+
+Audit the complete Jog path for both heads.
+
+Verify:
+- Head selection is correct.
+- Head 1 jog still works.
+- Head 2 jog works independently.
+- X/Y/Z axis selection is correct.
+- Positive and negative directions are correct.
+- Distance/increment is passed correctly.
+- Feed rate is passed correctly.
+- The request reaches the correct Machine Agent head.
+- GRBL receives the correct jog command.
+- Incremental/absolute mode handling is safe.
+- The command does not accidentally affect the other head.
+- Errors from GRBL/UGS are shown to the operator.
+
+Do not simply change the UI button.
+
+Trace the request end-to-end and fix the actual problem.
+
+TASK 4 — TWO PERMANENT CONSOLES
+
+I need TWO independent consoles.
+
+Head 1 must have its own console.
+Head 2 must have its own console.
+
+Each console must:
+
+- Belong only to its corresponding head.
+- Show commands sent to that head.
+- Show GRBL/UGS responses from that head.
+- Show errors from that head.
+- Preserve the existing console history.
+- Remain visible while using the Machine Controller.
+- NOT disappear after sending a command.
+- NOT be replaced by the other head's console.
+- NOT mix Head 1 and Head 2 messages.
+
+The operator should be able to continuously watch both consoles and follow what each controller is doing.
+
+If the current UI has one console component, refactor it into two persistent independent console views without removing the existing console functionality.
+
+The consoles should remain mounted/available during connection, jogging, homing, streaming, pause, resume, stop, settings operations, and console commands.
+
+Do not clear the console automatically after:
+- connect
+- disconnect
+- jog
+- home
+- command
+- stream
+- pause
+- resume
+- stop
+- settings refresh
+
+Only clear console history if there is already an explicit user-controlled "Clear" action.
+
+TASK 5 — TELEMETRY ISOLATION
+
+Verify that telemetry/events are correctly associated with the correct head.
+
+Head 1 events must update Head 1 UI.
+Head 2 events must update Head 2 UI.
+
+Make sure:
+- status
+- position
+- alarm
+- connection state
+- streaming progress
+- console messages
+- errors
+
+are not accidentally written into the other head's state.
+
+Pay special attention to SSE/event subscriptions and controller IDs.
+
+TASK 6 — SAFETY
+
+Do NOT weaken any existing safety behavior.
+
+Keep:
+- explicit head selection
+- confirmation requirements
+- confirm:true requirements for motion-capable operations
+- existing UI acknowledgement requirements
+- local-only Machine Agent binding
+- one-port/one-head enforcement
+
+Do not introduce automatic connection or automatic motion.
+
+TASK 7 — TESTING
+
+After fixing the implementation, perform a complete verification.
+
+At minimum:
+
+1. Typecheck frontend.
+2. Build frontend.
+3. Build API.
+4. Build Machine Agent.
+5. Verify Head 1 connection flow.
+6. Verify Head 2 connection flow.
+7. Verify Head 1 jog.
+8. Verify Head 2 jog.
+9. Verify Head 1 console.
+10. Verify Head 2 console.
+11. Verify console persistence.
+12. Verify telemetry separation.
+13. Verify disconnect/reconnect for both heads.
+14. Verify one-port/one-head enforcement.
+15. Verify existing Head 1 features were not broken.
+
+If physical CNC hardware is not available, do not claim hardware testing.
+Instead, perform code-level, API-level, and UI-level verification and clearly report what was and was not physically tested.
+
+TASK 8 — ROOT-CAUSE REPORT
+
+Before making broad changes, identify the actual root causes.
+
+At the end, give me a concise report containing:
+
+- Head 2 connection root cause
+- Jog root cause
+- Console root cause
+- Telemetry/head-isolation findings
+- Files changed
+- Why each file was changed
+- Tests performed
+- Which tests require real GRBL hardware
+- Confirmation that Head 1 behavior was preserved
+
+IMPORTANT FINAL REQUIREMENT:
+
+Do not stop after making the buttons visually work.
+
+I need the complete chain to work:
+
+Head 1:
+UI → API → Machine Agent → UGS → COM1 → GRBL → telemetry → UI
+
+Head 2:
+UI → API → Machine Agent → UGS → COM2 → GRBL → telemetry → UI
+
+Both heads must be independent and must be usable simultaneously.
+
+The final result must support two independent CNC heads, two independent persistent consoles, independent telemetry, independent connection state, and independent motion/control operations.

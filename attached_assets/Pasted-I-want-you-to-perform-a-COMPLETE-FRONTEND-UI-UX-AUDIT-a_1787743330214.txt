@@ -1,0 +1,652 @@
+I want you to perform a COMPLETE FRONTEND UI/UX AUDIT and IMPROVEMENT of the DMHC CNC application.
+
+Your goal is to make the frontend feel like a professional, production-grade CNC control application.
+
+IMPORTANT:
+This is a CNC machine-control application. UI/UX improvements must NEVER weaken safety or hide important machine state.
+
+==================================================
+1. GENERAL RULES
+==================================================
+
+- Focus on the frontend/UI/UX.
+- Preserve all existing functionality.
+- Do not remove existing features.
+- Do not redesign the Machine Agent architecture.
+- Do not modify backend behavior unless a frontend bug requires a compatible API correction.
+- Do not change CNC safety rules.
+- Do not remove confirmations from motion-capable actions.
+- Do not make dangerous actions easier to trigger accidentally.
+- Do not introduce automatic machine motion.
+- Do not introduce automatic controller connections.
+- Do not hide errors.
+- Do not hide machine state.
+- Do not replace real machine data with fake/demo data.
+- Do not break Head 1 while improving Head 2.
+- Head 1 and Head 2 must remain completely independent.
+
+Before changing anything, inspect the existing frontend architecture and understand the current component structure.
+
+==================================================
+2. DESIGN GOAL
+==================================================
+
+Build a professional CNC control dashboard.
+
+The UI should feel:
+
+- Professional
+- Technical
+- Industrial
+- Clean
+- Modern
+- Fast
+- Responsive
+- Easy to understand
+- Safe
+- Information-dense without becoming cluttered
+
+It should look like software designed specifically for CNC operators, not a generic CRUD dashboard.
+
+Prioritize clarity and operational usability over decorative design.
+
+==================================================
+3. UI/UX PRINCIPLES
+==================================================
+
+Apply proper UI/UX principles throughout the application:
+
+- Clear visual hierarchy
+- Consistent spacing
+- Consistent typography
+- Consistent button styles
+- Consistent iconography
+- Clear grouping of related controls
+- Strong distinction between machine state and user actions
+- Clear disabled/loading states
+- Clear success/error states
+- Prevent accidental destructive actions
+- Keep important information visible
+- Avoid unnecessary dialogs
+- Avoid excessive animations
+- Use animation only when it communicates state
+- Maintain good keyboard accessibility
+- Maintain good contrast
+- Maintain readable text
+- Avoid tiny controls
+- Avoid ambiguous icons
+- Use tooltips where appropriate
+- Keep frequently used CNC controls easy to reach
+
+Do not create visual clutter.
+
+==================================================
+4. MACHINE CONTROLLER PAGE
+==================================================
+
+The Machine Controller page is the most important part of the application.
+
+Redesign its layout professionally while preserving functionality.
+
+The operator should immediately understand:
+
+1. Which heads exist
+2. Which head is connected
+3. Which COM port is assigned
+4. Current machine state
+5. Current X/Y/Z position
+6. Alarm state
+7. Connection state
+8. Current operation
+9. Feed rate
+10. Jog controls
+11. Machine controls
+12. Console output
+
+The most important machine state should be visible without navigating through multiple screens.
+
+==================================================
+5. HEAD 1 AND HEAD 2
+==================================================
+
+Create a clear visual separation between Head 1 and Head 2.
+
+Both heads should have equivalent UI capabilities.
+
+Each head should have its own:
+
+- Connection controls
+- COM port selector
+- Connection status
+- Machine state
+- DRO
+- X/Y/Z positions
+- Alarm indicator
+- Jog controls
+- Feed rate
+- Home
+- Reset
+- Unlock
+- Work zero
+- Work offset
+- GRBL settings
+- Streaming controls
+- Console
+
+Do not make Head 2 feel like an afterthought.
+
+Head 1 and Head 2 should look like two professional independent CNC controller panels.
+
+==================================================
+6. CONNECTION UX
+==================================================
+
+Make connection state extremely clear.
+
+Use clear states such as:
+
+DISCONNECTED
+CONNECTING
+CONNECTED
+ERROR
+
+Show the selected COM port clearly.
+
+When connecting:
+
+- Disable conflicting controls while connection is pending.
+- Show a visible loading state.
+- Do not allow duplicate connection requests.
+- Show errors clearly.
+
+When connected:
+
+- Make the connected state obvious.
+- Enable appropriate machine controls.
+
+When disconnected:
+
+- Clearly disable controls that require a connection.
+
+Do not silently fail.
+
+==================================================
+7. DRO / POSITION DISPLAY
+==================================================
+
+Make X/Y/Z coordinates highly readable.
+
+They should be one of the most prominent elements on the controller panel.
+
+Use a layout such as:
+
+X
+000.000 mm
+
+Y
+000.000 mm
+
+Z
+000.000 mm
+
+Make units clear.
+
+Clearly distinguish:
+
+- Machine coordinates
+- Work coordinates
+
+if both are available.
+
+Avoid excessive decimal formatting that makes values difficult to read.
+
+==================================================
+8. MACHINE STATUS
+==================================================
+
+Create a clear status indicator.
+
+Examples:
+
+DISCONNECTED
+IDLE
+RUNNING
+PAUSED
+ALARM
+HOMING
+ERROR
+
+Use consistent visual semantics.
+
+Critical states such as ALARM and ERROR must be impossible to miss.
+
+Do not rely only on color.
+
+Use:
+
+- text
+- icons
+- visual indicators
+
+where appropriate.
+
+==================================================
+9. JOG CONTROLS
+==================================================
+
+Make Jog controls extremely clear and safe.
+
+Provide a professional CNC jog layout.
+
+For example:
+
+          Y+
+          ↑
+X-  ←    HOME    →  X+
+          ↓
+          Y-
+
+and separate Z controls.
+
+Clearly show:
+
+- Selected increment
+- Feed rate
+- Axis
+- Direction
+
+Use sensible presets for increments such as:
+
+0.01
+0.1
+1
+10
+100 mm
+
+Allow the current selection to be obvious.
+
+Do not make the interface encourage accidental motion.
+
+Motion-capable actions must retain existing confirmation/safety behavior.
+
+==================================================
+10. CONSOLE SYSTEM
+==================================================
+
+There MUST be TWO persistent consoles.
+
+One for Head 1.
+One for Head 2.
+
+Each console must:
+
+- Always remain accessible
+- Maintain its own history
+- Never mix messages
+- Show commands
+- Show GRBL responses
+- Show errors
+- Show streaming information
+- Show timestamps if supported
+- Automatically scroll when appropriate
+- Allow the operator to inspect older messages
+- NOT disappear after sending a command
+- NOT clear automatically
+
+Provide a visible "Clear" button only if clearing is already supported.
+
+Do not automatically clear console history after:
+
+- Connect
+- Disconnect
+- Jog
+- Home
+- Reset
+- Command
+- Stream
+- Pause
+- Resume
+- Stop
+- Settings operations
+
+The operator must be able to continuously monitor both controllers.
+
+==================================================
+11. G-CODE / STREAMING UI
+==================================================
+
+Make G-code workflow professional.
+
+Clearly show:
+
+- Selected head
+- File/program
+- Program status
+- Progress
+- Rows sent
+- Rows completed
+- Rows remaining
+- Pause
+- Resume
+- Stop
+
+Use a clear progress indicator.
+
+Make Stop visually distinct from normal actions.
+
+Do not hide streaming errors.
+
+Do not remove existing confirmation requirements.
+
+==================================================
+12. GRBL SETTINGS
+==================================================
+
+Improve the GRBL settings UI.
+
+Make settings easy to:
+
+- Search
+- Read
+- Refresh
+- Edit
+- Understand
+
+Clearly distinguish:
+
+READ
+REFRESH
+WRITE
+
+Any setting write operation must retain explicit confirmation.
+
+Show success/error feedback clearly.
+
+Never silently modify settings.
+
+==================================================
+13. MACHINE SAFETY UX
+==================================================
+
+Safety is more important than visual polish.
+
+Preserve:
+
+- Confirmation dialogs
+- Explicit head selection
+- Confirm:true requirements
+- Existing motion safeguards
+- One-port/one-head enforcement
+- Local-only Machine Agent model
+
+For dangerous actions:
+
+- Home
+- Jog
+- Reset
+- Unlock
+- Console commands
+- G-code streaming
+- Stop
+
+make the action intent obvious.
+
+Do not use misleading button placement.
+
+Do not place dangerous buttons directly next to commonly clicked harmless actions without sufficient distinction.
+
+==================================================
+14. RESPONSIVE DESIGN
+==================================================
+
+The UI must work well on:
+
+- Desktop
+- Laptop
+- Smaller laptop screens
+- 1366x768
+- 1440x900
+- 1920x1080
+
+Do not assume a huge monitor.
+
+On smaller screens:
+
+- Preserve important machine state
+- Avoid horizontal overflow
+- Stack panels intelligently
+- Keep controls accessible
+- Keep consoles usable
+
+==================================================
+15. ACCESSIBILITY
+==================================================
+
+Implement good accessibility:
+
+- Keyboard navigation
+- Visible focus states
+- Proper button labels
+- ARIA labels where necessary
+- Good color contrast
+- Do not communicate important state using color alone
+- Disabled states must be understandable
+- Inputs must have clear labels
+
+==================================================
+16. PERFORMANCE
+==================================================
+
+The frontend must remain fast.
+
+Avoid unnecessary re-renders.
+
+Pay special attention to:
+
+- Live telemetry
+- SSE events
+- DRO updates
+- Console messages
+- Streaming progress
+
+Do not cause the entire application to re-render every time telemetry arrives.
+
+Use appropriate React state architecture and memoization where useful.
+
+Do not introduce premature complexity.
+
+==================================================
+17. ERROR HANDLING
+==================================================
+
+Every important operation must provide useful feedback.
+
+Bad:
+
+"Something went wrong."
+
+Good:
+
+"Head 2 connection failed: COM5 could not be opened."
+
+Show:
+
+- What failed
+- Which head
+- What operation
+- Useful error information
+- Recovery action when possible
+
+Do not expose confusing technical stack traces to normal operators.
+
+==================================================
+18. LOADING STATES
+==================================================
+
+Every asynchronous operation should have a clear loading state.
+
+Examples:
+
+Connecting...
+Refreshing settings...
+Sending command...
+Homing...
+Starting stream...
+Stopping...
+Disconnecting...
+
+Prevent duplicate clicks while operations are pending.
+
+==================================================
+19. EMPTY STATES
+==================================================
+
+Create professional empty states.
+
+Examples:
+
+No COM ports detected.
+
+Head 2 is disconnected.
+
+No G-code loaded.
+
+No console messages yet.
+
+No GRBL settings loaded.
+
+Explain what the operator should do next.
+
+==================================================
+20. VISUAL CONSISTENCY
+==================================================
+
+Audit the entire frontend for inconsistent:
+
+- Border radius
+- Shadows
+- Font sizes
+- Button sizes
+- Spacing
+- Colors
+- Icons
+- Input styles
+- Cards
+- Dialogs
+- Toasts
+- Tables
+
+Create a consistent visual language.
+
+Reuse existing UI components where possible instead of duplicating styles.
+
+==================================================
+21. DO NOT OVER-DESIGN
+==================================================
+
+Avoid:
+
+- Excessive gradients
+- Huge decorative headers
+- Excessive animations
+- Giant cards
+- Unnecessary charts
+- Excessive rounded elements
+- Decorative elements that consume screen space
+- UI that looks like a marketing website
+
+This is an industrial control application.
+
+Information density and clarity are more important than decoration.
+
+==================================================
+22. PRESERVE EXISTING FUNCTIONALITY
+==================================================
+
+Before modifying a component, identify what functionality it currently provides.
+
+Do not accidentally remove:
+
+- API calls
+- Machine Agent communication
+- Head selection
+- Console functionality
+- Telemetry
+- Streaming
+- Settings
+- Safety confirmations
+- Error handling
+
+If you refactor a component, preserve its behavior.
+
+==================================================
+23. TESTING
+==================================================
+
+After the UI/UX work:
+
+Run:
+
+1. Frontend typecheck
+2. Frontend production build
+3. API build if frontend changes require API compatibility
+4. Verify all existing frontend routes
+5. Verify Head 1 controls
+6. Verify Head 2 controls
+7. Verify connection UI
+8. Verify Jog UI
+9. Verify both consoles
+10. Verify console persistence
+11. Verify telemetry rendering
+12. Verify streaming UI
+13. Verify settings UI
+14. Verify responsive layouts
+
+Do not claim physical CNC functionality was tested unless actual hardware was connected.
+
+==================================================
+24. FINAL REVIEW
+==================================================
+
+Before finishing, perform a visual and functional review of the entire frontend.
+
+Ask:
+
+- Can an operator understand the machine state in under 2 seconds?
+- Can they immediately identify Head 1 vs Head 2?
+- Can they clearly see connection status?
+- Can they clearly see X/Y/Z?
+- Can they clearly see alarms?
+- Can they safely jog?
+- Can they monitor both consoles?
+- Can they understand streaming progress?
+- Are errors obvious?
+- Are dangerous actions clearly distinguished?
+- Does the UI remain usable on a 1366x768 laptop?
+- Does the interface look like professional CNC software?
+
+Fix anything that fails this review.
+
+==================================================
+25. FINAL REPORT
+==================================================
+
+At the end, report:
+
+- What UI/UX problems you found
+- What you changed
+- Which components/files changed
+- Which features were preserved
+- Which new UX improvements were added
+- Performance improvements
+- Accessibility improvements
+- Responsive improvements
+- Safety improvements
+- Tests performed
+- Any remaining limitations
+
+MOST IMPORTANT:
+
+Do not merely make the UI "look nicer".
+
+Make it a genuinely professional CNC operator interface while preserving every existing feature, safety mechanism, backend contract, Machine Agent integration, Head 1 behavior, Head 2 behavior, telemetry, and persistent dual-console functionality.

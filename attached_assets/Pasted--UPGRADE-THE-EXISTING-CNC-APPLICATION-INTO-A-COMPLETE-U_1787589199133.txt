@@ -1,0 +1,1599 @@
+# UPGRADE THE EXISTING CNC APPLICATION INTO A COMPLETE UGS-LIKE CNC CONTROLLER
+
+## 🚨 CRITICAL — READ THIS FIRST
+
+I already have an existing CNC/G-code splitting application that you previously built.
+
+This is NOT a request to create an unrelated new application.
+
+I want to **upgrade the existing application** while preserving all currently working G-code splitting functionality.
+
+The existing application currently performs G-code processing/splitting and generates files for multiple CNC heads.
+
+The new goal is to evolve the application into a complete CNC control platform, similar in functionality and workflow to Universal Gcode Sender (UGS), while preserving the existing splitter.
+
+---
+
+# 1. CORE GOAL
+
+The final application should combine:
+
+```text
+EXISTING G-CODE SPLITTER
++
+NEW CNC MACHINE CONTROLLER
++
+LOCAL MACHINE COMMUNICATION
+```
+
+The user should be able to:
+
+```text
+Create / Upload G-code
+        ↓
+Process / Split G-code
+        ↓
+Generate Head 1 / Head 2 / Gap files
+        ↓
+Select a machine
+        ↓
+Configure the machine
+        ↓
+Connect to Arduino + GRBL
+        ↓
+Setup / Home / Configure
+        ↓
+Preview G-code
+        ↓
+Send / Stream G-code
+        ↓
+Monitor execution
+        ↓
+Pause / Resume / Stop
+```
+
+The final product should behave like a **custom CNC control application inspired by UGS**, with the existing G-code splitting functionality integrated into the workflow.
+
+---
+
+# 2. DO NOT BREAK THE EXISTING PROJECT
+
+The existing G-code splitter is already working.
+
+Before making changes:
+
+1. Inspect the complete existing project.
+2. Understand the current frontend.
+3. Understand the current backend.
+4. Understand the existing G-code processing.
+5. Understand how generated files are currently handled.
+6. Identify the safest integration points.
+
+DO NOT rewrite working code unnecessarily.
+
+DO NOT replace the existing splitter with a new implementation.
+
+DO NOT change its algorithms unless absolutely required.
+
+DO NOT remove existing features.
+
+DO NOT break existing workflows.
+
+The existing splitter must remain functional throughout development.
+
+---
+
+# 3. IMPORTANT ARCHITECTURE REQUIREMENT
+
+The application is hosted/developed through Replit.
+
+The browser/Replit server cannot directly access the physical user's Windows serial ports:
+
+```text
+COM3
+COM4
+COM5
+COM6
+COM7
+```
+
+Therefore:
+
+**The Replit application must NOT attempt to directly access the user's physical COM ports.**
+
+A local machine component is required.
+
+The architecture must be designed as:
+
+```text
+                    REPLIT
+             Web Application
+          ┌─────────────────────┐
+          │                     │
+          │ Frontend + Backend  │
+          │                     │
+          └──────────┬──────────┘
+                     │
+                     │ HTTP / WebSocket
+                     │
+                     ▼
+          USER'S LOCAL COMPUTER
+          ┌─────────────────────┐
+          │ Local Machine Agent │
+          │                     │
+          │ UGS Core / Adapter  │
+          │                     │
+          └──────────┬──────────┘
+                     │
+                     │ Serial
+                     ▼
+                  COM PORT
+                     │
+                     ▼
+              Arduino + GRBL
+```
+
+This architecture is mandatory unless a technically superior architecture is proven.
+
+---
+
+# 4. LOCAL MACHINE AGENT
+
+The Local Machine Agent is the component that runs on the user's physical computer.
+
+Its job is to provide access to:
+
+```text
+COM ports
+Serial devices
+Arduino
+GRBL
+Local machine resources
+```
+
+The agent must NOT depend on the Replit environment.
+
+It must run locally.
+
+The user should be able to download and run/install it on Windows.
+
+Prefer a packaged executable/application so the user does not need to manually install a development environment.
+
+For example:
+
+```text
+CNC Machine Agent.exe
+```
+
+or an equivalent installer.
+
+---
+
+# 5. DO NOT CHOOSE PYTHON OR JAVA BLINDLY
+
+Do NOT blindly rewrite UGS Core in Python.
+
+Do NOT blindly force the Local Machine Agent to use Python.
+
+Instead:
+
+### FIRST investigate the actual UGS Core architecture.
+
+Determine:
+
+1. What UGS Core version is appropriate.
+2. What Java version it requires.
+3. How UGS Core exposes:
+
+   * Serial communication
+   * GRBL controllers
+   * Controller initialization
+   * Status monitoring
+   * G-code streaming
+   * Jogging
+   * Homing
+   * Controller events
+   * Position tracking
+   * Error/alarm handling
+4. Whether UGS Core can be embedded.
+5. Whether UGS Core can be wrapped in a local service.
+6. Whether it can run headlessly without the UGS desktop GUI.
+7. What the cleanest integration architecture is.
+
+Do NOT assume class names or APIs.
+
+Inspect the actual UGS source/version.
+
+---
+
+# 6. PREFERRED UGS STRATEGY
+
+The project should reuse UGS Core functionality wherever technically possible.
+
+DO NOT unnecessarily reimplement functionality that UGS Core already provides.
+
+We want to leverage UGS Core for functionality such as:
+
+```text
+Serial communication
+GRBL controller
+Controller initialization
+Status monitoring
+Position tracking
+G-code streaming
+Buffer management
+Jogging
+Homing
+Pause/resume
+Error handling
+Alarm handling
+Controller events
+```
+
+The new application should build its own UI and integration around the UGS engine.
+
+We are NOT trying to copy the UGS desktop GUI.
+
+We are building our own UI.
+
+---
+
+# 7. POSSIBLE LOCAL ARCHITECTURES
+
+Investigate and select the best architecture.
+
+Possible architecture A:
+
+```text
+Web Frontend
+     ↓
+Local API
+     ↓
+UGS Core Local Service
+     ↓
+Serial
+     ↓
+Arduino
+```
+
+Possible architecture B:
+
+```text
+Web Frontend
+     ↓
+Local Python/Node Agent
+     ↓
+UGS Core Adapter
+     ↓
+Serial
+     ↓
+Arduino
+```
+
+Possible architecture C:
+
+```text
+Web Frontend
+     ↓
+Local Java Service
+     ↓
+UGS Core
+     ↓
+Serial
+     ↓
+Arduino
+```
+
+These are examples only.
+
+**Do not choose one before inspecting the actual UGS Core integration possibilities.**
+
+Select the architecture that:
+
+* Reuses UGS Core effectively.
+* Is reliable.
+* Is easy for the end user to install.
+* Can access Windows COM ports.
+* Supports real-time status.
+* Supports multiple controllers.
+* Can run without the Replit environment having hardware access.
+* Can eventually support Raspberry Pi/Linux if practical.
+
+---
+
+# 8. LOCAL AGENT API
+
+Define a clear API between:
+
+```text
+Replit Web Application
+```
+
+and:
+
+```text
+Local Machine Agent
+```
+
+The API should support at minimum:
+
+```http
+GET /api/v1/agent/status
+
+GET /api/v1/ports
+
+GET /api/v1/controllers
+
+POST /api/v1/controllers/{id}/connect
+
+POST /api/v1/controllers/{id}/disconnect
+
+GET /api/v1/controllers/{id}/status
+
+POST /api/v1/controllers/{id}/command
+
+POST /api/v1/controllers/{id}/jog
+
+POST /api/v1/controllers/{id}/home
+
+POST /api/v1/controllers/{id}/reset
+
+POST /api/v1/controllers/{id}/unlock
+
+POST /api/v1/controllers/{id}/start
+
+POST /api/v1/controllers/{id}/pause
+
+POST /api/v1/controllers/{id}/resume
+
+POST /api/v1/controllers/{id}/stop
+```
+
+The exact API may be changed if the chosen architecture requires it.
+
+Document every endpoint.
+
+---
+
+# 9. REAL-TIME COMMUNICATION
+
+CNC status cannot rely only on HTTP polling.
+
+Use WebSocket or another suitable real-time mechanism.
+
+The local agent should be able to push:
+
+```text
+Machine state
+Machine position
+Work position
+Feed rate
+Spindle state
+Alarm
+Error
+Controller state
+Job progress
+G-code line
+GRBL responses
+Connection state
+```
+
+Example:
+
+```text
+Arduino
+   ↓
+GRBL
+   ↓
+UGS Core
+   ↓
+Local Agent
+   ↓
+WebSocket
+   ↓
+Replit Frontend
+```
+
+---
+
+# 10. SERIAL PORT DISCOVERY
+
+The local agent must detect actual serial devices.
+
+Example:
+
+```json
+[
+  {
+    "port": "COM3",
+    "description": "USB Serial Device",
+    "manufacturer": "..."
+  },
+  {
+    "port": "COM6",
+    "description": "Arduino Uno",
+    "manufacturer": "..."
+  }
+]
+```
+
+Do NOT fabricate ports.
+
+Do NOT assume Arduino exists.
+
+If no hardware is connected:
+
+```text
+[]
+```
+
+must be a valid result.
+
+---
+
+# 11. WINDOWS LOCAL INSTALLATION
+
+This is extremely important.
+
+The final implementation must define exactly what the user needs to install/download on Windows.
+
+The final system should preferably provide:
+
+```text
+CNC Machine Agent Installer
+```
+
+or:
+
+```text
+CNC Machine Agent.exe
+```
+
+The user should NOT need to install Java/Python/Node manually unless there is a strong reason.
+
+If runtime installation is unavoidable, document it clearly.
+
+The agent installer/package must include everything required to:
+
+```text
+Start local service
+Access COM ports
+Run UGS Core
+Expose local API
+Expose WebSocket
+Log errors
+```
+
+---
+
+# 12. LOCAL AGENT LIFECYCLE
+
+The intended workflow should be:
+
+```text
+1. User downloads Machine Agent.
+
+2. User installs/runs Machine Agent.
+
+3. Agent starts on:
+   127.0.0.1:<port>
+
+4. User opens the Replit web application.
+
+5. Web application detects:
+   Local Machine Agent = ONLINE
+
+6. User opens Machine Controller.
+
+7. Application requests:
+   GET /api/v1/ports
+
+8. Real COM ports appear.
+
+9. User selects COM port.
+
+10. User presses CONNECT.
+
+11. Local agent connects through UGS Core.
+
+12. GRBL information appears.
+
+13. Status begins updating in real time.
+```
+
+This entire workflow must be implemented/documented.
+
+---
+
+# 13. LOCALHOST SECURITY
+
+The local agent must bind to:
+
+```text
+127.0.0.1
+```
+
+by default.
+
+Do NOT expose CNC control endpoints publicly.
+
+Implement appropriate:
+
+```text
+CORS
+Origin validation
+Local authentication/token if required
+```
+
+The system must not create a publicly accessible machine-control API.
+
+---
+
+# 14. MACHINE CONTROLLER UI
+
+Add a new major application section:
+
+```text
+MACHINE CONTROLLER
+```
+
+This must be a completely new CNC control interface.
+
+It should include:
+
+```text
+Machine selector
+Connection
+Serial port
+Machine state
+DRO
+Jog controls
+Console
+Machine settings
+Setup wizard
+G-code sender
+Job controls
+G-code viewer
+Alarms
+Logs
+```
+
+The UI should feel like a professional CNC controller.
+
+---
+
+# 15. MACHINE SETUP WIZARD
+
+Create a complete machine setup wizard.
+
+The wizard should support:
+
+```text
+Machine name
+Controller type
+Serial port
+Baud rate
+Firmware
+Machine dimensions
+Axis configuration
+Steps/mm
+Maximum rate
+Acceleration
+Homing
+Limits
+Soft limits
+Machine profile
+```
+
+The wizard should clearly distinguish:
+
+```text
+Read from controller
+```
+
+from:
+
+```text
+User configuration
+```
+
+and:
+
+```text
+Write to controller
+```
+
+Do not silently change GRBL settings.
+
+---
+
+# 16. MACHINE PROFILES
+
+Support multiple saved machines.
+
+Example:
+
+```text
+CNC Head 1
+CNC Head 2
+Development Machine
+Test Machine
+```
+
+Each profile should store appropriate configuration.
+
+The user should be able to:
+
+```text
+Create
+Edit
+Duplicate
+Delete
+Select
+Connect
+Disconnect
+```
+
+machine profiles.
+
+---
+
+# 17. TWO GRBL CONTROLLERS
+
+Support at least:
+
+```text
+HEAD 1
+HEAD 2
+```
+
+Each must have completely independent:
+
+```text
+UGS controller instance
+Serial connection
+Machine profile
+Machine state
+Position
+Alarm state
+Console
+Job
+G-code stream
+```
+
+Example:
+
+```text
+HEAD 1 → COM6 → GRBL #1
+
+HEAD 2 → COM7 → GRBL #2
+```
+
+Ports must never be hardcoded.
+
+The same port must not be connected to two controllers simultaneously.
+
+---
+
+# 18. UGS-LIKE FUNCTIONALITY
+
+The final controller should provide functionality comparable to the core functionality users expect from UGS.
+
+At minimum investigate and implement:
+
+### Connection
+
+* Serial port discovery
+* Connect
+* Disconnect
+* Controller initialization
+* Firmware detection
+
+### Monitoring
+
+* Machine state
+* Machine position
+* Work position
+* Feed rate
+* Overrides
+* Alarms
+* Errors
+
+### Console
+
+* Manual GRBL commands
+* Raw responses
+* Error responses
+* Alarm responses
+
+### Machine control
+
+* Homing
+* Jogging
+* Reset
+* Unlock
+
+### G-code
+
+* Open G-code file
+* Inspect file
+* Preview
+* Stream
+* Pause
+* Resume
+* Stop
+* Progress
+* Current line
+
+### Settings
+
+* Read GRBL settings
+* Display settings
+* Edit settings
+* Save settings
+
+### Machine management
+
+* Profiles
+* Setup wizard
+* Multiple controllers
+
+---
+
+# 19. G-CODE SPLITTER INTEGRATION
+
+The existing splitter currently generates files such as:
+
+```text
+Head 1 G-code
+Head 2 G-code
+Gap Fill G-code
+```
+
+The new Machine Controller must be able to consume these files.
+
+Do NOT change the splitting algorithm.
+
+Instead create integration at the file/output level.
+
+Example:
+
+```text
+G-CODE SPLITTER
+
+Generated Files:
+
+☑ Head 1.gcode
+☑ Head 2.gcode
+☐ Gap Fill.gcode
+
+[ SEND TO MACHINE ]
+```
+
+The user should be able to select:
+
+```text
+File
+Target machine/controller
+```
+
+and open the file in the G-code sender.
+
+---
+
+# 20. G-CODE SENDER
+
+Implement proper GRBL-aware streaming.
+
+Do NOT simply send the entire file using one giant serial write.
+
+Use the actual UGS Core streaming capabilities if available.
+
+The sender should support:
+
+```text
+Start
+Pause
+Resume
+Stop
+Reset
+Progress
+Current line
+Errors
+Completion
+```
+
+The user must be able to monitor the job.
+
+---
+
+# 21. G-CODE VIEWER
+
+Provide:
+
+```text
+G-code text viewer
+Current line
+Line numbers
+Search
+Progress
+Toolpath preview where practical
+```
+
+The current executing line should be identifiable.
+
+---
+
+# 22. JOGGING
+
+Provide:
+
+```text
+X+
+X-
+Y+
+Y-
+Z+
+Z-
+```
+
+Configurable:
+
+```text
+Distance
+Feed rate
+```
+
+Example:
+
+```text
+0.1 mm
+1 mm
+10 mm
+100 mm
+```
+
+Use UGS Core functionality where available.
+
+Movement must happen ONLY after explicit user action.
+
+---
+
+# 23. HOMING
+
+Provide:
+
+```text
+HOME
+```
+
+with explicit confirmation.
+
+Example:
+
+```text
+Homing will physically move the machine.
+
+Make sure the machine is ready.
+
+[ CANCEL ]
+[ HOME MACHINE ]
+```
+
+Never home automatically.
+
+---
+
+# 24. GRBL CONSOLE
+
+Provide a raw GRBL console.
+
+Examples:
+
+```text
+$I
+$$
+$#
+$G
+$10
+$22
+```
+
+Display:
+
+```text
+TX
+RX
+OK
+ERROR
+ALARM
+```
+
+This is required for debugging.
+
+---
+
+# 25. MACHINE STATUS / DRO
+
+Display actual data from the controller.
+
+Example:
+
+```text
+Machine State: IDLE
+
+Machine Coordinates
+X: 120.250
+Y: 500.000
+Z: 0.000
+
+Work Coordinates
+X: 20.250
+Y: 100.000
+Z: 0.000
+```
+
+Never fabricate machine values.
+
+---
+
+# 26. SAFETY
+
+The application controls physical CNC machines.
+
+Therefore:
+
+* Never automatically home.
+* Never automatically jog.
+* Never automatically execute G-code.
+* Never send movement commands during connection.
+* Require explicit user action.
+* Clearly show machine state.
+* Clearly show alarms.
+* Clearly show connection state.
+* Implement safe stop/reset behavior.
+* Make dangerous actions visually distinct.
+
+---
+
+# 27. DEVELOPMENT / SIMULATION
+
+Support testing without physical hardware.
+
+The local controller architecture should support:
+
+```text
+Real UGS/GRBL controller
+```
+
+and a clearly separated:
+
+```text
+Mock / Simulator controller
+```
+
+The simulator should NOT pretend to be physical hardware.
+
+---
+
+# 28. VIRTUAL COM SUPPORT
+
+The Local Agent must work with standard Windows serial ports, including virtual serial ports.
+
+For example:
+
+```text
+COM3 ↔ COM4
+```
+
+from com0com.
+
+This should require no special logic.
+
+The application should simply detect:
+
+```text
+COM3
+COM4
+```
+
+as normal serial ports.
+
+This allows the user to test the entire pipeline before connecting real Arduino hardware.
+
+---
+
+# 29. DEVELOPMENT ENVIRONMENT VS LOCAL HARDWARE
+
+Clearly separate:
+
+## Replit environment
+
+Used for:
+
+```text
+Frontend
+Web backend
+UI development
+API development
+Testing without hardware
+```
+
+## Local machine
+
+Used for:
+
+```text
+Machine Agent
+UGS Core
+Serial ports
+Arduino
+GRBL
+Real CNC machine
+```
+
+Do not confuse these environments.
+
+---
+
+# 30. IMPLEMENTATION TECHNOLOGY
+
+Do NOT impose a language for the local machine layer before investigating UGS Core.
+
+The final choice must be based on:
+
+1. Best UGS Core integration.
+2. Windows serial access.
+3. Packaging simplicity.
+4. Runtime stability.
+5. Multi-controller support.
+6. WebSocket/API support.
+7. Maintainability.
+
+If UGS Core is best integrated using Java, use Java.
+
+If a Python/Java bridge is technically justified, use it.
+
+If another architecture is better, explain it.
+
+**Do not rewrite UGS Core functionality in another language merely for the sake of using Python.**
+
+---
+
+# 31. SOURCE OF TRUTH FOR UGS
+
+Before implementing the UGS integration:
+
+1. Identify the exact UGS Core repository/version.
+2. Inspect the actual source code.
+3. Identify the actual controller APIs.
+4. Identify actual serial communication classes.
+5. Identify actual GRBL functionality.
+6. Identify how to run UGS Core without the desktop UI.
+7. Identify the cleanest way to expose it to the web application/local agent.
+
+Do NOT invent:
+
+```text
+Classes
+Methods
+Packages
+APIs
+```
+
+If something is unknown, investigate it before implementing.
+
+---
+
+# 32. REQUIRED IMPLEMENTATION PLAN BEFORE CODING
+
+Before making major code changes, create an implementation plan containing:
+
+```text
+Architecture
+Component diagram
+Frontend ↔ Local Agent communication
+Local Agent ↔ UGS Core communication
+UGS Core ↔ Serial communication
+Serial ↔ Arduino communication
+```
+
+Also define:
+
+```text
+Required local software
+Required installers
+Required runtime
+Required drivers
+Required dependencies
+Required ports
+Required configuration files
+Required certificates if any
+```
+
+Explain exactly how the final system will be installed on Windows.
+
+Do not start implementing the hardware architecture until this plan is clear.
+
+---
+
+# 33. REQUIRED LOCAL FILES / INSTALLATION
+
+The final system must clearly identify everything required on the user's physical computer.
+
+For example, if applicable:
+
+```text
+CNC Machine Agent.exe
+UGS Core runtime
+Configuration files
+Machine profiles
+Serial drivers
+Supporting DLLs
+Java runtime
+Python runtime
+Node runtime
+```
+
+Only include what is actually required.
+
+The final package should ideally bundle runtime dependencies.
+
+The user should not have to manually assemble the environment.
+
+---
+
+# 34. INSTALLATION WORKFLOW
+
+Document the exact end-user workflow.
+
+Example:
+
+```text
+1. Download CNC Machine Agent.
+
+2. Install it.
+
+3. Start it.
+
+4. Connect Arduino through USB.
+
+5. Windows detects COM port.
+
+6. Open the web application.
+
+7. Local Agent shows ONLINE.
+
+8. Open Machine Controller.
+
+9. Select COM port.
+
+10. Select machine profile.
+
+11. Connect.
+
+12. GRBL status appears.
+
+13. Configure/setup machine.
+
+14. Load generated G-code.
+
+15. Run job.
+```
+
+The final report must provide exact steps.
+
+---
+
+# 35. BUILD / PACKAGE WORKFLOW
+
+The project must document:
+
+```text
+How to build the web application
+How to build the Local Machine Agent
+How to package the Local Machine Agent
+How to produce the Windows executable
+How to install it
+How to start it
+How to stop it
+How to update it
+```
+
+---
+
+# 36. LOGGING
+
+The Local Machine Agent must provide useful logs.
+
+Logs should include:
+
+```text
+Startup
+Port discovery
+Connection
+Disconnection
+GRBL startup
+Commands
+Responses
+Errors
+Alarms
+Job progress
+Agent errors
+```
+
+Do not expose sensitive information unnecessarily.
+
+---
+
+# 37. TESTING STRATEGY
+
+Test the system in stages.
+
+### Test 1
+
+No hardware.
+
+Expected:
+
+```text
+Frontend works.
+Local Agent can run.
+No COM ports.
+No crash.
+```
+
+### Test 2
+
+Virtual COM pair.
+
+Example:
+
+```text
+COM3 ↔ COM4
+```
+
+Expected:
+
+```text
+Agent detects both ports.
+```
+
+### Test 3
+
+GRBL simulator.
+
+Expected:
+
+```text
+Connect
+Receive startup
+Read status
+Receive responses
+```
+
+### Test 4
+
+Real Arduino + GRBL.
+
+Expected:
+
+```text
+Detect COM
+Connect
+Receive startup
+Read status
+Read position
+```
+
+### Test 5
+
+Machine setup.
+
+### Test 6
+
+Jogging/homing.
+
+### Test 7
+
+G-code streaming.
+
+Never claim a test passed unless it was actually executed.
+
+---
+
+# 38. IMPORTANT TESTING RULE
+
+If the Replit environment does not have access to:
+
+```text
+COM ports
+Arduino
+GRBL
+```
+
+do NOT claim real hardware testing.
+
+Clearly report:
+
+```text
+Software tested
+Virtual serial tested
+Simulator tested
+Real hardware tested
+```
+
+separately.
+
+---
+
+# 39. DEVELOPMENT PROCESS
+
+Work incrementally.
+
+For every major feature:
+
+```text
+Implement
+↓
+Build
+↓
+Test
+↓
+Verify
+↓
+Document
+↓
+Continue
+```
+
+Do not implement the entire system blindly.
+
+Do not destroy working functionality while adding features.
+
+---
+
+# 40. FINAL REPORT — MANDATORY
+
+When the implementation is complete, return a detailed report.
+
+## A. EXISTING PROJECT
+
+Explain:
+
+* Existing architecture.
+* Existing splitter.
+* What was preserved.
+* What was changed.
+* What was added.
+* Confirm whether any existing behavior changed.
+
+## B. FINAL ARCHITECTURE
+
+Provide a diagram:
+
+```text
+Replit Frontend
+      ↓
+Replit Backend if needed
+      ↓
+Local Machine Agent
+      ↓
+UGS Core / UGS Adapter
+      ↓
+Serial
+      ↓
+Arduino
+      ↓
+GRBL
+```
+
+## C. UGS
+
+Report:
+
+```text
+UGS repository
+UGS version
+Git commit/tag
+Java version
+Build system
+Actual modules/classes used
+How UGS is executed
+How UGS is exposed to the local agent
+```
+
+## D. LOCAL AGENT
+
+Report:
+
+```text
+Technology
+Language
+Framework
+Serial library
+API
+WebSocket
+Port
+Binding address
+Packaging method
+Executable name
+```
+
+## E. LOCAL INSTALLATION
+
+Give the exact list of files/software the user needs to download/install.
+
+Example:
+
+```text
+1. ______
+2. ______
+3. ______
+```
+
+Explain what each item does.
+
+## F. RUNNING
+
+Give exact commands or GUI steps to:
+
+```text
+Start local agent
+Check agent
+Open frontend
+Connect Arduino
+Select COM
+Connect machine
+```
+
+## G. API
+
+List all local-agent endpoints.
+
+## H. FRONTEND
+
+Describe all new CNC Controller screens.
+
+## I. MACHINE SETUP
+
+Describe the setup wizard and machine profiles.
+
+## J. G-CODE
+
+Explain:
+
+```text
+How splitter output reaches machine controller
+How files are loaded
+How jobs are streamed
+How progress is displayed
+```
+
+## K. TWO CONTROLLERS
+
+Explain how:
+
+```text
+HEAD 1
+HEAD 2
+```
+
+are isolated.
+
+## L. TESTING
+
+Explicitly report:
+
+```text
+Replit test
+Local Agent test
+Virtual COM test
+Simulator test
+Real Arduino test
+```
+
+Only mark tests as passed if actually executed.
+
+## M. KNOWN LIMITATIONS
+
+List limitations.
+
+## N. FUTURE WORK
+
+Only describe future features that were not implemented.
+
+---
+
+# 41. FINAL SUCCESS CRITERIA
+
+The project is successful only when:
+
+### Existing
+
+* Existing G-code splitter still works.
+* Existing G-code processing remains intact.
+* Existing application does not regress.
+
+### CNC Controller
+
+* CNC Controller UI exists.
+* Machine setup wizard exists.
+* Machine profiles exist.
+* Local Agent exists.
+* Local Agent can access COM ports.
+* UGS Core is reused where appropriate.
+* GRBL connection works.
+* Status works.
+* DRO works.
+* Console works.
+* Settings work.
+* Jogging works.
+* Homing works.
+* G-code sender works.
+* G-code viewer exists.
+* Pause/resume/stop works.
+* Two controllers work independently.
+
+### Local architecture
+
+* Replit cannot and does not need to directly access COM.
+* Local Agent accesses COM.
+* Local Agent communicates with frontend through documented local API/WebSocket.
+* Local Agent can be packaged for Windows.
+* User installation procedure is documented.
+* Virtual COM testing is possible.
+* Real Arduino + GRBL can eventually be connected without modifying the web application.
+
+---
+
+# FINAL COMMAND
+
+Do NOT simply add a "COM port button" to the existing splitter.
+
+Build a real CNC control architecture.
+
+The existing splitter is the G-code preparation layer.
+
+The new Machine Controller is the machine-control layer.
+
+The Local Machine Agent is the bridge between the web application and the physical computer.
+
+UGS Core should be reused wherever technically possible instead of reimplementing its functionality.
+
+The final system should conceptually work as:
+
+```text
+                CNC SOFTWARE
+                     │
+       ┌─────────────┴─────────────┐
+       │                           │
+G-CODE SPLITTER              MACHINE CONTROLLER
+       │                           │
+       │                     Local Machine Agent
+       │                           │
+       │                       UGS Core
+       │                           │
+       └─────────────┬─────────────┘
+                     │
+              Generated G-code
+                     │
+                     ▼
+                GRBL / CNC
+```
+
+The user should ultimately be able to perform the majority of normal UGS workflows from this new application, while also using the existing G-code splitting functionality.
+
+**First inspect the current project and the actual UGS Core source/API.**
+
+**Then produce the architecture and implementation plan.**
+
+**Then implement incrementally.**
+
+**Do not guess UGS APIs.**
+
+**Do not break the existing splitter.**
+
+**Do not assume Replit can access local COM ports.**
+
+**The final report must contain enough technical detail for another engineer to install, run, test, and troubleshoot the complete system locally.**

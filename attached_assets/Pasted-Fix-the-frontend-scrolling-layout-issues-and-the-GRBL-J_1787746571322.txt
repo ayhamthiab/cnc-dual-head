@@ -1,0 +1,289 @@
+Fix the frontend scrolling/layout issues and the GRBL Jog failure.
+
+IMPORTANT:
+Do not redesign the application from scratch.
+Do not remove existing features.
+Do not change the Machine Agent architecture or API contracts unless the investigation proves an API-side fix is required.
+Preserve all existing Head 1 functionality while making Head 2 equivalent.
+
+TASK 1 — FIX JOG
+
+The current Jog command fails with:
+
+Jog X − failed: GRBL rejected command $J=G21G91X-100F1000: error: Bad number format
+
+Investigate the complete path:
+
+Frontend Jog UI
+→ API request
+→ Machine Agent
+→ UGS Core
+→ GRBL
+
+Find exactly why the generated GRBL jogging command is invalid.
+
+The current command is:
+$J=G21G91X-100F1000
+
+Fix the command generation so that it produces valid GRBL jogging syntax.
+
+Pay special attention to:
+- Required separators/spaces between G-code words.
+- G21 / G91 formatting.
+- Axis value formatting.
+- Feed-rate formatting.
+- Positive and negative distances.
+- Decimal values.
+- X/Y/Z axes.
+- Incremental jogging.
+- Feed rates.
+- Any frontend number parsing/conversion.
+- Any backend command construction that may remove spaces.
+
+Do NOT simply change the UI error handling.
+The actual command sent to GRBL must be valid.
+
+Test at minimum:
+- X +100 @ 1000
+- X -100 @ 1000
+- Y +100 @ 1000
+- Y -100 @ 1000
+- Z +10 @ 500
+- Small decimal jog values
+- Different feed rates
+
+Make sure Head 1 and Head 2 use the same corrected Jog implementation.
+
+TASK 2 — AUDIT HEAD 2
+
+Head 2 currently shows the COM port and has a Connect button, but clicking Connect does not appear to connect.
+
+Compare the complete Head 1 implementation against Head 2.
+
+Audit EVERYTHING related to:
+- COM port selection
+- Connect
+- Disconnect
+- connection state
+- status polling
+- telemetry
+- DRO
+- machine state
+- alarms
+- Home
+- Jog
+- Reset
+- Unlock
+- Work zero
+- Work offset
+- GRBL settings
+- Console
+- G-code streaming
+- Pause
+- Resume
+- Stop
+- error handling
+- loading states
+- success/failure notifications
+
+For every feature that works for Head 1, verify that Head 2 has the equivalent functionality and that the request contains the correct head/controller ID.
+
+Do not assume Head 2 works just because the UI exists.
+
+Trace Head 2 Connect from the button all the way to:
+
+Frontend → API → Machine Agent → Head 2 UGS controller → physical COM port
+
+Find and fix the actual issue.
+
+Make sure Head 1 behavior is not broken by the changes.
+
+TASK 3 — TWO PERMANENT CONSOLES
+
+There must be TWO independent consoles:
+
+Head 1 Console
+Head 2 Console
+
+Each console must:
+- belong only to its corresponding head
+- display that head's messages/events/errors
+- remain visible while using the page
+- NOT disappear when navigating between controls
+- NOT be unmounted/recreated unnecessarily
+- retain the visible console history during normal UI interaction
+- allow the operator to follow the live machine-agent output
+- clearly identify the head
+
+Do not create one shared console that mixes Head 1 and Head 2 messages.
+
+The user must be able to see:
+HEAD 1 CONSOLE
+[continuous log]
+
+and later:
+
+HEAD 2 CONSOLE
+[continuous log]
+
+The console should not be deleted/cleared simply because another component rerenders or because the user scrolls.
+
+If there is an existing SSE/event stream, correctly route events to the corresponding head console.
+
+TASK 4 — FIX PAGE SCROLLING
+
+The frontend currently has a scrolling problem where scrolling sometimes behaves incorrectly or feels like the page is "fighting" the user's scroll.
+
+Investigate:
+- nested scroll containers
+- fixed-height containers
+- overflow-y
+- overflow-x
+- wheel event handlers
+- pointer events
+- touch/trackpad scrolling
+- sticky/fixed elements
+- modal/dialog scroll locking
+- console scroll containers
+- Head 1 / Head 2 sections
+- accidental `preventDefault`
+- elements capturing wheel events
+- CSS `height: 100%`
+- `min-height`
+- `max-height`
+- viewport calculations
+
+The page should have ONE predictable main vertical scroll.
+
+Required layout:
+
+HEAD 1
+-----------
+all Head 1 controls
+Head 1 status
+Head 1 DRO
+Head 1 controls
+Head 1 console
+
+        ↓ normal page scroll
+
+HEAD 2
+-----------
+all Head 2 controls
+Head 2 status
+Head 2 DRO
+Head 2 controls
+Head 2 console
+
+The user should be able to naturally scroll from Head 1 down to Head 2.
+
+Avoid unnecessary nested vertical scrolling.
+
+Console scrolling may remain internal to the console itself, but it must not interfere with normal page scrolling when the user is scrolling outside the console.
+
+TASK 5 — FIX RESPONSIVE LAYOUT
+
+Audit the entire frontend for layout overflow.
+
+There are currently elements appearing outside their intended containers/ranges.
+
+Check:
+- desktop
+- laptop
+- smaller laptop resolutions
+- browser zoom
+- narrow widths
+- horizontal overflow
+- cards
+- grids
+- buttons
+- inputs
+- dropdowns
+- console
+- status panels
+- tables
+- Head 1 section
+- Head 2 section
+
+Nothing should visually escape its parent container.
+
+Use:
+- responsive CSS
+- proper flex/grid constraints
+- min-width: 0 where appropriate
+- max-width: 100%
+- proper overflow handling
+- responsive breakpoints
+
+Do not solve overflow by blindly adding `overflow: hidden`.
+The content must remain usable.
+
+TASK 6 — FONT / UI SCALE
+
+The current frontend feels too large.
+
+Reduce the visual scale moderately while maintaining accessibility and readability.
+
+Review:
+- headings
+- buttons
+- labels
+- inputs
+- cards
+- status indicators
+- console text
+- spacing
+- padding
+- gaps
+
+Do not make the interface tiny.
+
+The goal is a professional CNC control dashboard where a lot of information can fit on screen without feeling oversized.
+
+TASK 7 — CNC SAFETY
+
+This is a machine-control interface.
+
+Do NOT weaken existing safety confirmations.
+
+Keep:
+- explicit confirmation for motion commands
+- existing confirmation requirements
+- Head selection
+- connection state validation
+- existing safety warnings
+
+Do not automatically connect Head 1 or Head 2.
+Do not automatically send motion commands.
+
+TASK 8 — REGRESSION TESTING
+
+After fixing the issues:
+
+1. Run frontend typecheck.
+2. Run frontend production build.
+3. Run API typecheck/build if frontend/API changes require it.
+4. Verify Head 1 functionality remains intact.
+5. Verify Head 2 uses the same feature set as Head 1.
+6. Verify Jog command generation for positive, negative and decimal values.
+7. Verify no unwanted horizontal page overflow.
+8. Verify normal page scrolling from Head 1 to Head 2.
+9. Verify both consoles remain visible and independent.
+10. Verify console history is not unexpectedly cleared.
+
+IMPORTANT:
+Do not report "fixed" merely because the button no longer throws an error.
+
+For the Jog issue specifically, inspect the actual command generated and sent to the Machine Agent/GRBL and ensure it follows valid GRBL jogging syntax.
+
+At the end, provide a concise report containing:
+
+- Root cause of the Jog error.
+- Exact fix applied.
+- Root cause of Head 2 Connect problem.
+- Exact fix applied.
+- Root cause of scrolling/layout problems.
+- What was changed.
+- Confirmation that Head 1 was regression-tested.
+- Confirmation that Head 2 now has feature parity with Head 1.
+- Build/typecheck results.

@@ -1,0 +1,30 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "e-GhYhgfGX9JuEM-qSj3F"
+uri = "file://LOCAL_DEPLOYMENT_GUIDE.txt"
+type = "text"
+title = "LOCAL_DEPLOYMENT_GUIDE.txt"
+description = "Source-verified guide for local Windows, offline operation, Machine Agent, API, CORS, and Raspberry Pi readiness."
+
+[[outputs]]
+id = "aFgT-mYshttBfsX5JBO0H"
+uri = "file://machine-agent/target/dmhc-machine-agent.jar"
+type = "unspecified"
+title = "DMHC Machine Agent — Updated Automated Run"
+description = "Windows Machine Agent JAR with the new Head 1/Head 2 setup offsets and verified head-scoped automatic Alarm unlock."
+
+[[outputs]]
+id = "Xw1x-NtDqljWa3cb7rjcK"
+uri = "file://machine-agent/target/dmhc-machine-agent-grbl-deadlock-fix.jar"
+type = "unspecified"
+title = "DMHC Machine Agent — UGS deadlock fix"
+description = "Fixes the confirmed ControllerSession/UGS callback deadlock that allowed the GRBL banner to appear while the connection request timed out."
+
+[[outputs]]
+id = "UZnHEK9_oaI1V6Hy9Es6y"
+uri = "file://machine-agent/target/dmhc-machine-agent-initialization-fix.jar"
+type = "unspecified"
+title = "DMHC Machine Agent — initialization readiness fix"
+description = "Fixes the false post-handshake timeout by enabling UGS status polling after the successful GRBL initialization message and before waiting for IDLE or ALARM."

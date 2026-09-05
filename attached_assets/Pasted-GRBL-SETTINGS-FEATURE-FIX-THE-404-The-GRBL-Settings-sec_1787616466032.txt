@@ -1,0 +1,69 @@
+GRBL SETTINGS FEATURE — FIX THE 404
+
+The "GRBL Settings" section currently returns HTTP 404.
+
+Do NOT redesign the application.
+Do NOT modify the existing working serial communication.
+Do NOT replace UGS Core.
+Do NOT implement a parallel GRBL communication layer.
+
+The current pipeline is already working:
+
+Frontend
+→ Local Machine Agent
+→ UGS Core
+→ JSerialComm
+→ COM4
+→ com0com COM3
+→ Python TCP/Serial bridge
+→ grblHAL simulator
+
+Console commands and live GRBL status are already working through this pipeline.
+
+Your task is ONLY to implement the GRBL Settings feature correctly.
+
+Before writing code:
+
+1. Inspect the exact pinned UGS Core source already used by this project.
+2. Find the actual UGS Core classes/APIs responsible for GRBL settings.
+3. Do not guess class names or APIs.
+4. Determine how UGS reads and writes GRBL settings.
+5. Add the minimum Local Machine Agent API required to expose those UGS capabilities to the frontend.
+6. Connect the existing "GRBL Settings" frontend to that API.
+
+The feature must support:
+
+- Read current GRBL settings from the selected Head.
+- Display setting number.
+- Display setting name/description when available from UGS.
+- Display current value.
+- Refresh settings.
+- Allow editing settings only when explicitly confirmed by the user.
+- Write the changed setting through UGS Core.
+- Return the real GRBL response/result.
+- Handle errors cleanly.
+
+Head 1 and Head 2 must remain completely independent.
+
+Do NOT add:
+- Jogging
+- Homing
+- Setup Wizard
+- Motor direction UI
+- Limit switch UI
+- G-code streaming
+- Any unrelated feature
+
+IMPORTANT:
+The current HTTP 404 means the required Agent endpoint is missing or incorrectly routed. Identify the exact frontend request that returns 404 and implement the corresponding backend endpoint.
+
+After implementation, report:
+
+1. Exact frontend route/request that was returning 404.
+2. New backend endpoint(s).
+3. Exact UGS Core classes/methods used.
+4. Exact GRBL communication path.
+5. Files changed.
+6. Tests performed.
+7. Example curl commands used to test the endpoint.
+8. Confirm that existing Console, Status, COM, and Head 1/Head 2 functionality was not broken.

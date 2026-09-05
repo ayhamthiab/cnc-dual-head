@@ -1,0 +1,37 @@
+Modify the frontend project so that it is fully cross-platform and can be installed, built, and run reliably on both **Windows and Linux**.
+
+Requirements:
+
+1. The frontend must work natively on both Windows x64 and Linux x64.
+2. All platform-specific dependencies must resolve automatically to the correct package for the operating system.
+3. Do not hardcode Replit-specific operating-system assumptions.
+4. Do not exclude Windows native packages, Linux native packages, or other platform-specific optional dependencies through pnpm overrides.
+5. Do not disable or remove optional dependencies that are required by Vite, Rollup, LightningCSS, SWC, esbuild, or other build tools.
+6. Keep the existing project structure, features, functionality, and UI unchanged.
+7. Keep the existing pnpm workspace structure and lockfile workflow.
+8. Make sure `pnpm install` works correctly on a clean Windows machine and on a clean Linux machine.
+9. Make sure `pnpm run build` works correctly on both Windows and Linux.
+10. Make sure the Vite frontend build does not depend on binaries that exist only in Replit's Linux environment.
+11. Review `pnpm-workspace.yaml`, package.json files, Vite configuration, and dependency overrides and adjust them where necessary for true cross-platform compatibility.
+12. Platform-specific native packages such as:
+
+    * `@rollup/rollup-win32-x64-msvc`
+    * `@rollup/rollup-linux-x64-gnu`
+    * `lightningcss-win32-x64-msvc`
+    * `lightningcss-linux-x64-gnu`
+    * other required native packages
+      must be allowed to install normally on their respective platforms.
+13. Do not replace native dependencies with unrelated alternatives just to make the Replit environment build.
+14. Do not change the application's behavior or architecture unless required for cross-platform compatibility.
+15. The final project should be portable: I should be able to clone/copy it to a Windows laptop or a Linux machine, run the documented installation commands, and build the frontend without manually fixing missing native dependencies.
+
+After making the changes, verify the dependency configuration carefully and explain:
+
+* what caused the platform dependency conflicts,
+* what was changed,
+* why the project will now work on Windows and Linux,
+* the exact commands I should run on a fresh Windows machine,
+* the exact commands I should run on a fresh Linux machine.
+
+Important:
+Do not delete the project or remove existing functionality. Do not simply hide or bypass dependency errors. Fix the dependency configuration so the correct platform-specific packages are installed automatically by pnpm.

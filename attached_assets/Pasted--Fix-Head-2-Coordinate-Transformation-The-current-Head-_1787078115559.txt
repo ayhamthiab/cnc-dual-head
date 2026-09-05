@@ -1,0 +1,123 @@
+## Fix Head 2 Coordinate Transformation
+
+The current **Head 2 output is incorrect**. Head 1 and the Gap are working correctly. The Head 2 output must follow the coordinate transformation described below.
+
+### Core Idea
+
+The machine has **two CNC heads**, and each head has its own local coordinate system with a different local zero.
+
+* **Head 1 `(0,0)`** is the **general/global reference zero**.
+* Head 2 has its own local zero, which is physically offset from Head 1.
+* The offset between the two local zeros must be calculated and stored as a **dynamic variable**, not hard-coded.
+
+For example:
+
+* Head 1 local/global zero:
+  `(0,0)`
+* Head 2 local zero:
+  `(0,1200)`
+
+Therefore, the offset between the two heads is:
+
+`Offset_X = 0`
+
+`Offset_Y = 1200`
+
+### Coordinate Transformation
+
+All drawing coordinates are initially defined relative to **Head 1 / global coordinates**.
+
+When generating G-code for Head 2, convert every Head 1/global coordinate into the equivalent **Head 2 local coordinate** using the offset between the two zeros.
+
+For example, if a point in the global/Head 1 coordinate system is:
+
+`(100, 200)`
+
+and Head 2's local zero is at:
+
+`(0, 1200)`
+
+then the same physical point must be represented in Head 2's local coordinate system as:
+
+`X_H2 = 100 - 0 = 100`
+
+`Y_H2 = 200 - 1200 = -1000`
+
+Therefore:
+
+**H1 / Global:** `(100, 200)`
+
+**H2 Local:** `(100, -1000)`
+
+The important point is that we are **not simply flipping the Y-axis** using a formula such as:
+
+`Y_local = 1200 - Y_global`
+
+Instead, we are transforming the coordinates based on the **actual offset between the two local zeros**.
+
+### Dynamic Offset
+
+Do not hard-code `1200` directly into the coordinate conversion.
+
+Create dynamic variables, for example:
+
+```text
+H2_OFFSET_X
+H2_OFFSET_Y
+```
+
+Then use:
+
+```text
+H2_X = GLOBAL_X - H2_OFFSET_X
+H2_Y = GLOBAL_Y - H2_OFFSET_Y
+```
+
+This allows the physical position of Head 2 to be changed later without modifying the coordinate-transformation logic.
+
+### Expected Head 2 Output
+
+For the current test case, the expected Head 2 output should look like:
+
+```gcode
+; ============================================
+; DMHC-EM Generated File — HEAD 2 — Zone B
+; Segments: 3
+; ============================================
+G21        ; units: millimeters
+G90        ; absolute positioning
+G17        ; XY plane
+G0 Z5.000 ; pen up
+M3 S12000 ; spindle on
+
+; --- Run 1 (3 segments) ---
+G0 X-100.0000 Y548.0000 Z5.0000
+G1 Z0.0000 F1000.0
+G1 X-100.0000 Y900 F1000.0
+G1 X-350.0000 Y900.0000 F1000.0
+G1 X-350.0000 Y548.0000 F1000.0
+G0 Z5.000
+
+G0 Z5.000
+M5
+M30
+```
+
+### Important Requirement
+
+Please inspect the existing codebase and **modify the current coordinate-generation logic**, rather than creating a separate workaround.
+
+The required behavior is:
+
+1. Head 1 coordinates are the global reference coordinates.
+2. Calculate the physical offset between Head 1's local zero and Head 2's local zero.
+3. Store this offset in dynamic variables.
+4. Keep the original/global drawing coordinates unchanged.
+5. When generating Head 2 G-code, transform every coordinate using the Head 2 offset.
+6. Do not use a hard-coded `1200`.
+7. Do not automatically reverse/flip the Y-axis unless that is explicitly required by the configured physical offset.
+8. Head 1 output must remain unchanged.
+9. The Gap logic must remain unchanged because it is already correct.
+10. Only fix the Head 2 coordinate transformation.
+
+The goal is to make the system correctly support **multiple CNC heads with different local coordinate zeros**, where every head's G-code is generated from the same global coordinate system using that head's dynamically configured offset.

@@ -1,0 +1,528 @@
+RASPBERRY PI ARM64 COMPATIBILITY AND DEPENDENCY AUDIT
+=====================================================
+
+Scope and method
+----------------
+Analysis only. No source, configuration, dependency, or project files were
+modified. This report was produced from a recursive workspace inventory; all
+application source, build/dependency manifests, startup scripts, relevant
+configuration, lockfile platform entries, and the existing virtual environment
+package inventory were inspected. Attached prompt/history files and images were
+identified but are not runtime code.
+
+Target: Raspberry Pi OS/Debian, Linux aarch64, kernel 6.18.34+rpt-rpi-v8.
+Source host: Windows 10.
+
+EXECUTIVE VERDICT
+----------------
+The project can realistically run on a Raspberry Pi ARM64, but it is NOT
+ready to transfer and start unchanged. The Java machine agent source is mostly
+cross-platform and has the best chance of working after a native Pi build.
+The frontend/API have Linux ARM64 packages in their lockfile and should build
+on a Pi after a clean pnpm install. The current Windows launcher/installer
+cannot run there. Physical CNC control remains a hardware validation task,
+not a guarantee: JSerialComm supports Linux ARM architectures, but UGS Core
+and the specific USB serial adapters/controllers must be tested on the target.
+
+The most material blockers before production use are:
+1. No Linux/Raspberry Pi launcher or systemd units exist.
+2. Linux serial-device permissions and stable USB naming are not configured.
+3. The source still contains Windows-oriented operational wording and launch
+   discovery; local_desktop_app.py actively runs PowerShell to clear ports.
+4. Image-to-G-code API requests require ImageMagick's `magick` command.
+   The separate Python image_to_gcode module additionally requires OpenCV,
+   NumPy, Potrace and vpype, none of which are declared in requirements.txt.
+5. The Pi must build/install its own node_modules, Python venv, UGS Core, and
+   Machine Agent JAR. Windows binaries and venv/node_modules must not be copied.
+
+PROJECT STRUCTURE
+-----------------
+
+1) Workspace root: C:\gp\CNC Software
+   Purpose: pnpm TypeScript monorepo plus local Java/Python CNC services.
+   Build/package manager: pnpm workspace; root package preinstall rejects
+   non-pnpm installs. pnpm-workspace.yaml contains a 1440-minute minimum
+   release-age policy.
+
+2) artifacts/dmhc-ui
+   Purpose: React browser UI: home, jobs, visualization, machine controller,
+   automated drawing and machine setup UI.
+   Language/framework: TypeScript, React 19.1.0, Vite 7.3.2, Tailwind 4.1.14,
+   Radix UI, TanStack Query, Wouter.
+   Build/start: `pnpm --filter @workspace/dmhc-ui run build`; development
+   `... run dev`; preview `... run serve`. Vite requires PORT and BASE_PATH,
+   listens on 0.0.0.0 and proxies /api.
+   Depends on: api-client-react/api-zod libraries, browser, Machine Agent at
+   127.0.0.1:18888/api/v1, and Express API through Vite proxy.
+
+3) artifacts/api-server
+   Purpose: Express API for health, job processing, generated G-code download,
+   visualization, image-to-G-code and logging.
+   Language/framework: TypeScript, Node/Express 5.2.1; bundled with esbuild
+   0.27.3 to dist/index.mjs.
+   Build/start: `pnpm --filter @workspace/api-server run build`; then
+   `pnpm --filter @workspace/api-server run start` (or Node on dist/index.mjs).
+   PORT is mandatory. It invokes Python DMHC-EM and ImageMagick.
+   Depends on: api-zod, db package (not exercised by present routes), Python,
+   writable OS temporary directory; ImageMagick for image endpoint.
+
+4) machine-agent
+   Purpose: local authenticated HTTP/SSE bridge from UI to two independent
+   GRBL/UGS controller sessions (head-1 and head-2), including port discovery,
+   connect/reconnect, commands, homing, work zero, G-code streams, settings,
+   alarm handling and drawing automation.
+   Language/framework: Java 17, Maven, UGS Core 2.0-SNAPSHOT, JSerialComm.
+   Build: scripts/build-agent.sh (Linux) or build-agent.ps1 (Windows) clones
+   and installs pinned UGS Core commit 7c7d45b6b94a718589ce4b444865cd790c34882a,
+   then runs Maven clean/test/package. Output target/dmhc-machine-agent.jar.
+   Start: `java -jar target/dmhc-machine-agent.jar [--port N] [--token T]`.
+   Depends on: a JDK 17+, Maven/Git for a fresh build, UGS Core, serial USB
+   driver/kernel support, and the selected physical GRBL controllers.
+
+5) dmhc_em
+   Purpose: pure-Python G-code parser, multi-head partitioner, collision and
+   equivalence checker, scheduler, generated head1/head2/gapfill G-code and
+   report writer. image_to_gcode.py is an additional OpenCV/Potrace/vpype path.
+   Language: Python; no framework and no packaging manifest.
+   Start: `python3 -m dmhc_em.main --input ... --output ...`; API supplies it.
+   Depends on: Python standard library for normal partition pipeline. Tests use
+   pytest. image_to_gcode.py needs NumPy, OpenCV headless, potrace and vpype.
+
+6) lib/api-spec, lib/api-zod, lib/api-client-react, lib/db
+   Purpose: OpenAPI definition/code generation, Zod types, React API client,
+   and optional Drizzle/PostgreSQL schema/configuration.
+   Language: TypeScript. db requires DATABASE_URL only if imported/used.
+   The current Express routes use an in-memory job Map, not PostgreSQL.
+
+7) artifacts/mockup-sandbox
+   Purpose: separate development/mockup Vite app. Not needed for CNC runtime.
+   It uses a plugin that writes generated preview files under its local area.
+
+DEPENDENCY AND BUILD FILES
+--------------------------
+Found: root package.json, pnpm-lock.yaml, pnpm-workspace.yaml, tsconfig*.json;
+eight workspace package.json files; Maven pom.xml and dependency-reduced-pom;
+Windows .bat/.ps1 and Bash scripts; Vite/esbuild/Drizzle/Orval configuration.
+No requirements.txt, pyproject.toml, setup.py, Pipfile, poetry.lock, Dockerfile,
+docker-compose file, Makefile, Gradle files, .npmrc, or .env files exist.
+
+Node declared direct dependencies (exact declared versions/ranges):
+- Root dev: prettier ^3.8.4; typescript ~5.9.3.
+- API: cookie-parser ^1.4.7, cors ^2.8.6, drizzle-orm ^0.45.2, express ^5.2.1,
+  pino ^9.14.0, pino-http ^10.5.0; build/dev: esbuild 0.27.3,
+  esbuild-plugin-pino ^2.3.3, pino-pretty ^13.1.3, thread-stream 3.1.0,
+  tsx ^4.21.0, Node typings ^25.3.3.
+- UI: React/react-dom 19.1.0; Vite ^7.3.2; @vitejs/plugin-react ^5.0.4;
+  Tailwind ^4.1.14 and @tailwindcss/vite ^4.1.14; React Query ^5.90.21;
+  Framer Motion ^12.23.24; Lucide ^0.545.0; Wouter ^3.3.5; Zod ^3.25.76;
+  extensive Radix UI components (versions in UI package); UI-only components
+  include recharts, cmdk, date-fns, embla, vaul and react-hook-form.
+- Mockup sandbox is development-only; adds chokidar ^4.0.3 and fast-glob
+  ^3.3.3 among UI equivalents.
+- DB: drizzle-orm ^0.45.2, drizzle-zod ^0.8.3, pg ^8.22.0, drizzle-kit
+  ^0.31.10. API spec dev: orval ^8.18.0.
+
+Java pom exact dependencies: ugs-core 2.0-SNAPSHOT; com.fazecast:jSerialComm
+2.11.4; Gson 2.10.1; JUnit Jupiter 5.10.2 (test). Java release is exactly 17.
+Plugins: compiler 3.11.0, surefire 3.2.5, shade 3.5.3. Maven has no explicitly
+declared minimum version; Maven 3.8+ is the prudent target for Java 17 builds.
+
+Python: normal dmhc_em pipeline imports only standard library modules.
+pytest is used only by tests. image_to_gcode.py dynamically imports cv2 and
+numpy and invokes external `potrace` and `vpype`. Existing Windows venv freeze
+shows numpy==2.5.2, opencv-python-headless==5.0.0.93, pillow==11.3.0,
+pytest==9.1.1 plus their support packages; this is evidence of one current
+environment, not a reproducible lockfile. Pillow is not imported by dmhc_em.
+
+PROPOSED PYTHON DEPENDENCY LIST (REPORT ONLY; NO FILE CREATED):
+- For current normal API pipeline: no third-party runtime Python package.
+- Test runner: pytest==9.1.1 (or compatible current Pi release).
+- For dmhc_em.image_to_gcode: numpy==2.5.2, opencv-python-headless==5.0.0.93,
+  plus command-line Potrace and vpype. Pin only after validating wheels on the
+  selected Pi OS/Python version; versions above are observed Windows venv data.
+
+WINDOWS-SPECIFIC FINDINGS
+-------------------------
+1. start_local_project.bat (entire file)
+   Uses cmd syntax, `%~dp0`, `set`, `pause`, backslashes and C:\gp\.venv;
+   probes .venv\Scripts\python.exe. Cannot run on Linux. Code/startup script
+   replacement required (proposed start_raspberry_pi.sh).
+
+2. local_desktop_app.py: kill_port, _append_windows_tool_dirs,
+   find_java_and_maven, start_services
+   `powershell -NoProfile -Command Get-NetTCPConnection ... Stop-Process` is
+   Windows-only. C:\Program Files Java/Maven paths, java.exe/mvn.cmd/mvn.exe
+   discovery and Windows Scripts directories are Windows-specific. On Linux,
+   the port cleanup silently does nothing; environment/path augmentation is
+   already skipped when os.name != nt. Requires code change for equivalent
+   Linux stale-process handling, or avoid this launcher and start services
+   separately/systemd.
+
+3. artifacts/api-server/src/routes/jobs.ts:getPythonCommand/getWorkspaceRoot
+   Explicit process.platform win32 handling chooses Scripts/python.exe and
+   `python`/`py`; Linux branch correctly uses .venv/bin/python3/python and
+   python3/python. `split(/[\\/]/)` and chosen separator are cross-platform.
+   No Pi code change required; configuration PYTHON is recommended.
+
+4. artifacts/api-server/package.json:dev
+   Conditional `process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'` is an
+   intentional cross-platform branch. No change required.
+
+5. machine-agent/scripts/build-agent.ps1, run-agent.ps1,
+   package-windows.ps1
+   PowerShell, target\ paths, jpackage MSI, WiX expectation, --win-console,
+   --win-menu and --win-shortcut are Windows-only. Do not use/copy as launch
+   mechanism on Pi. build-agent.sh is the Linux counterpart; no code change
+   needed for building, but a Pi launcher/service is required.
+
+6. machine-agent/src/main/java/.../ControllerSession.java:110, 673-688
+   User-facing messages say "waiting for Windows", "COM port" and "Windows
+   opened the COM handle". Function calls use requested port string and UGS
+   JSerialComm rather than Windows APIs. Functional Linux operation should work
+   with /dev/ttyUSB* or /dev/ttyACM*; wording needs a future code change.
+
+7. Java tests only: DrawingAutomationTest, ControllerSessionInitializationTest,
+   PortLeaseBookTest contain COM4/COM6/COM9 fixtures. They are test data, not
+   production port defaults. Optional future test portability cleanup only.
+
+8. local_desktop_app.py and start_local_project.bat contain hardcoded C:\ paths.
+   No other production code contains Windows registry, Win32 API, Windows
+   service API, native DLL loading, hardcoded browser path, cmd.exe, or .exe
+   launch requirement. Existing .venv has Windows DLL/EXE artifacts and must
+   not be copied.
+
+9. machine-agent attached JARs are compiled artifacts of unknown OS/JDK
+   provenance. They must not be assumed valid on ARM64; rebuild on Pi.
+
+ARM64 / RASPBERRY PI COMPATIBILITY
+----------------------------------
+Component/dependency                           Status       Assessment
+Java 17 code, Gson, JUnit                      COMPATIBLE   Pure JVM code; install ARM64 JDK.
+JSerialComm 2.11.4                             VERIFY       Vendor documents Linux permissions and ARMv8_64
+                                                           architecture selection. It bundles native code, so test the
+                                                           exact Pi/JDK/USB adapter. It is likely viable, not guaranteed.
+UGS Core 2.0-SNAPSHOT at pinned source commit   VERIFY       Build natively on Pi; this repository has no ARM test result.
+Java built-in HttpServer, SSE, Gson             COMPATIBLE   No platform-specific source use found.
+Node 24/runtime                                COMPATIBLE   Node publishes Linux ARM64 binaries; no engines field pins Node.
+pnpm workspace/Vite/esbuild/Rollup             COMPATIBLE   pnpm lock includes Linux ARM64 packages: esbuild 0.27.3,
+                                                           Rollup 4.62.2, Tailwind oxide 4.3.1 and lightningcss 1.32.0.
+React/UI/Express/pino/cors                      COMPATIBLE   JavaScript packages; no x86-only runtime dependency declared.
+PostgreSQL pg client                            VERIFY       Portable client; database is optional/not active in routes.
+Python normal dmhc_em pipeline                  COMPATIBLE   Standard library only; Python 3.10+ is a reasonable target.
+pytest                                          COMPATIBLE   ARM64 wheels/source build normally available; verify selected Python.
+NumPy/OpenCV headless                           VERIFY       Native wheels/system libraries; test Pi Python version and RAM.
+Potrace                                         VERIFY       Debian package/source availability must be installed/tested.
+vpype                                           VERIFY       Python package native/optional dependencies need Pi validation.
+ImageMagick `magick` command                    VERIFY       Required by API image endpoint; Debian packaging command name may vary.
+Windows batch/PowerShell/MSI installer          NOT COMPAT.  Replace operational launch/packaging approach.
+Windows .venv/node_modules/JAR binaries         NOT COMPAT.  Recreate/rebuild per Pi architecture.
+
+The API esbuild external list names sharp, sqlite, canvas, serialport, usb,
+Electron, browser automation and other native modules, but these are only
+potential future externals: none is declared/imported for the current runtime.
+No GPIO, camera, Electron, JNI outside JSerialComm, OpenCV use in normal API,
+or native Node serial library is currently active.
+
+CNC / SERIAL / GRBL AUDIT
+-------------------------
+Files/classes:
+- ControllerRegistry.java: creates head-1/head-2 sessions; lists devices via
+  `ConnectionFactory.getDevices(ConnectionDriver.JSERIALCOMM)`; validates the
+  requested path against enumerated devices and prevents one port being leased
+  to both heads.
+- ControllerSession.java: owns one UGS GrblController and port; connects via
+  `openCommPort(ConnectionDriver.JSERIALCOMM, requestedPort, requestedBaudRate)`;
+  initializes GRBL, receives status/pins/alarms, supports disconnect, reset,
+  unlock, home, jog, work zero, raw command and streaming.
+- SessionGrblController.java: preserves UGS command response ownership.
+- GrblCommandBuilder.java: GRBL command construction.
+- DrawingAutomation.java: explicit two-head automation with connection,
+  homing/status/alarm safeguards and G-code stream control.
+- PortLeaseBook.java: mutual exclusion by case-insensitive port name.
+- MachineHttpServer.java: authenticated REST endpoints and SSE events.
+- AgentConfig.java / Main.java: local-only listener at port 18888 by default.
+
+Current port choice: UI/API sends a string selected from agent enumeration;
+there is no hardcoded production COM number or baud rate. Profiles persist a
+port and baud per head in the agent user's home directory. Tests use COM sample
+strings only. API accepts profile baud rates 1200..2000000.
+
+Linux expectation: UGS/JSerialComm enumeration should expose device paths such
+as /dev/ttyUSB0 or /dev/ttyACM0; the source passes the selected string through
+rather than enforcing COM syntax. On Pi, run the service account in `dialout`
+(or the group owning the tty device), then log out/in or restart service. A
+udev rule keyed to each adapter's serial number/vendor/product is strongly
+recommended to create stable names (for example /dev/dmhc-head1 and head2),
+because ttyUSB/ttyACM numbering can change after reconnect/reboot. Verify that
+the adapter driver is in the kernel and that no ModemManager/serial console
+holds the port. Do not run the production agent as root.
+
+JSerialComm assessment: version 2.11.4 is explicitly pinned. Its upstream
+documentation describes it as platform-independent, calls out Linux serial
+permissions, and recognizes armv8_64 as a Linux architecture. It extracts a
+native library; verify the JAR includes/loads the ARM64 native library under
+the chosen ARM64 Java 17 runtime. If noexec prevents loading from temp, its
+documented java.io.tmpdir or jSerialComm.library.path options may be relevant.
+
+JAVA ANALYSIS
+-------------
+Main entry: com.dmhc.agent.Main (shade manifest), Java release 17. Main sets
+java.awt.headless=true, starts local-only API and disconnects all controllers
+at JVM shutdown. No GUI dependency is required. Native/JNI surface is only
+JSerialComm through UGS/ConnectionDriver.JSERIALCOMM. UGS source is fetched
+from GitHub at a fixed commit and installed locally into Maven before project
+Maven package. Maven/UGS requires network or a prepopulated local repository
+on first Pi build.
+
+Filesystem: profiles JSON is stored in `${user.home}/.dmhc-machine-agent/
+profiles.json`; the service user needs a writable home. On Linux this becomes
+typically /home/<service-user>/.dmhc-machine-agent/profiles.json, not a Windows
+path. No Java Runtime.exec/ProcessBuilder or Windows command execution exists.
+The Java source only uses portable java.nio filesystem APIs.
+
+NODE / FRONTEND / API ANALYSIS
+------------------------------
+Node version: no package.json engines declaration. LOCAL_DEPLOYMENT_GUIDE says
+Node 24; use a current Node 24 Linux ARM64 build and test it. pnpm version is
+not pinned by packageManager/corepack metadata; use a currently compatible pnpm
+version and retain frozen lockfile installs after initial validation.
+
+Workspace packages: @workspace/api-server, @workspace/dmhc-ui,
+@workspace/mockup-sandbox, @workspace/api-spec, @workspace/api-zod,
+@workspace/api-client-react, @workspace/db, @workspace/scripts.
+Root build: `pnpm run build`; root typecheck uses project references and then
+artifact/scripts typechecks. API test: `tsx --test src/lib/*.test.ts`.
+
+Runtime API: Express app has `cors()` with its unrestricted default behavior,
+JSON/text 50 MB limits and routes under /api. It has no host binding argument,
+so Node's default listener behavior must be considered when exposing it; retain
+local-only/reverse-proxy design if LAN access is desired. UI Vite server/preview
+binds 0.0.0.0 and allows all hosts. This is convenient on LAN but not a secure
+public exposure configuration.
+
+The frontend's relative /api calls work during Vite dev/preview because
+vite.config.ts proxies /api to APPLICATION_API_TARGET (default 127.0.0.1:25309
+outside Replit). For static production hosting, Vite proxy does not exist: a
+reverse proxy or a combined same-origin server must route /api to Express.
+The Machine Agent is deliberately separate and loopback-only; the browser UI
+validates its URL as http + localhost/127.0.0.1/[::1], so a remote LAN browser
+cannot control a Pi-hosted agent without a future deliberate architecture/UI
+change. This is a security design, not a Pi bug.
+
+PYTHON ANALYSIS
+---------------
+Expected version is not declared. Code uses modern typing syntax (`list[str]`,
+`dict | None` in launcher), so Python 3.10+ is required; Python 3.11 is a
+practical Raspberry Pi target. dmhc_em/main.py is command-line only: no tkinter
+or GUI dependency. There is no serial package, no Windows platform check, and
+no subprocess use in the regular G-code pipeline. Paths are pathlib/portable.
+
+dmhc_em/image_to_gcode.py is separately portable in source but invokes
+Potrace/vpype via shutil.which/subprocess and uses cv2/NumPy. It writes staged
+PBM/SVG/config/G-code next to requested output, with atomic replacement. It
+will need Linux executables on PATH. The active Express image endpoint does NOT
+call that Python file: it has its own TypeScript raster/vector implementation
+and requires ImageMagick. Consequently install only what features you enable.
+
+STARTUP / ORCHESTRATION
+-----------------------
+Current Windows one-click flow:
+1. start_local_project.bat finds .venv\Scripts\python.exe (or C:\gp\.venv),
+   sets PYTHONPATH/PATH and launches local_desktop_app.py.
+2. Launcher skips pnpm install if root node_modules exists; otherwise runs
+   pnpm install.
+3. Launcher detects occupied 25308/25309/18888 then executes PowerShell to
+   force-kill owner processes.
+4. It builds API, launches Node dist/index.mjs with PORT=25309.
+5. It launches Vite with PORT=25308, BASE_PATH=/, host 0.0.0.0. Vite's proxy
+   default is 127.0.0.1:25309, matching this launcher.
+6. It uses an existing machine-agent/target JAR or Maven-builds it, then starts
+   Java JAR at 18888, captures and displays generated agent token.
+7. It opens http://127.0.0.1:25308/ via webbrowser and terminates child
+   processes on Ctrl+C.
+
+Recommended Pi architecture (proposed, not implemented):
+- A systemd service for Java Machine Agent, user `dmhc`, local bind only.
+- A systemd service for Express API, user `dmhc`, explicit PYTHON pointing to
+  /opt/dmhc/.venv/bin/python3 and writable system temporary directory.
+- A frontend production build served by nginx/Caddy/lighttpd (or Vite only for
+  development), with same-origin /api reverse proxy to Express.
+- Machine Agent stays at loopback 127.0.0.1:18888. Use the local browser on the
+  Pi for direct control; do not expose its token/API remotely by default.
+- A proposed start_raspberry_pi.sh may be useful for development, but services
+  are safer for an always-on CNC controller. Add only after validation.
+
+PORTS AND NETWORKING
+--------------------
+Port   Component                 Definition/default                 Notes
+25308  dmhc-ui dev/preview       local_desktop_app.py; requires PORT Dev launcher value; configurable.
+25309  Express API in launcher   local_desktop_app.py               Configurable in launcher only.
+8080   UI default API target     vite.config.ts if REPL_ID exists   Documentation/API example; PORT required.
+18888  Machine Agent             AgentConfig DEFAULT_PORT           Configurable --port; HTTP and SSE share it.
+8081   Mockup sandbox convention Development-only                  No runtime CNC need.
+
+Agent binds only 127.0.0.1/localhost and rejects public host args. UI default
+is http://127.0.0.1:18888/api/v1; agent token and URL are browser localStorage
+only. Agent CORS permits local defaults plus optional DMHC_ALLOWED_ORIGIN_SUFFIXES.
+Express cors is permissive. Browser auto-open appears only in Python launcher.
+
+FILESYSTEM / DATA STORAGE
+-------------------------
+- API jobs: OS temp directory `dmhc_em_*`; writes input.gcode, head1.gcode,
+  head2.gcode, gapfill.gcode, report.json. Jobs live only in memory and temp
+  files are not durable/automatically cleaned by the job route.
+- API image endpoint: temporary `dmhc-image-to-gcode-*`, deleted in finally.
+- Python output writer: requested output directory, same G-code/report names.
+- Python image tool: requested output parent and optional .binary.pbm/.svg.
+- Machine profiles: ${user.home}/.dmhc-machine-agent/profiles.json.
+- UI: agent URL/token in browser localStorage only.
+- Build/artifacts: node_modules, artifacts/*/dist, machine-agent/target,
+  .agent-ugs and caches. Pi service user needs write access only to its home,
+  temp directory and deliberate deployment/build paths. Use ownership/chown,
+  not broad chmod 777.
+
+ENVIRONMENT VARIABLES / ARGUMENTS
+---------------------------------
+PORT: required by API and both Vite configs; no default in config.
+BASE_PATH: required by both Vite configs; use `/` for root hosting.
+NODE_ENV: optional; controls production logging/UI Replit plugins.
+APPLICATION_API_TARGET: optional UI Vite proxy target; otherwise 25309 or 8080.
+REPL_ID: optional platform detection, not required on Pi.
+PYTHON: optional API interpreter override; strongly recommended on Pi.
+IMAGE_MAGICK_COMMAND: optional API override; default `magick`.
+LOG_LEVEL: optional API logging level; default info.
+DATABASE_URL: required only if lib/db/Drizzle is imported/run; not used by current
+job route flow.
+DMHC_UGS_DIR: optional UGS checkout location for agent build script.
+DMHC_AGENT_TOKEN: optional static machine-agent token; otherwise generated.
+DMHC_ALLOWED_ORIGIN_SUFFIXES: optional comma-separated Agent CORS suffixes.
+JAVA_HOME, MAVEN_HOME: optional; only used by Windows launcher discovery.
+Agent arguments: --port, --token, --host (host restricted to loopback).
+No secret values are reported here.
+
+PROPOSED RASPBERRY PI INSTALLATION LIST (DO NOT INSTALL YET)
+------------------------------------------------------------
+APT/system baseline: git, curl, ca-certificates, build-essential (needed if a
+native npm/pip fallback build occurs), openjdk-17-jdk, maven, python3,
+python3-venv, python3-pip, ImageMagick for API image conversion, potrace only
+if Python image_to_gcode feature is enabled, and an HTTP server/reverse proxy
+(nginx or Caddy) for production static UI/API routing. Install the correct
+kernel driver/firmware package only if the exact USB-serial adapter needs it.
+
+Node: Node.js 24 Linux ARM64 and a compatible pnpm release (not pinned by repo).
+Run a fresh Pi `pnpm install --frozen-lockfile`; never transfer node_modules.
+
+Python: create fresh .venv using Python 3.10+ (prefer 3.11); normal partition
+path has no runtime pip dependencies. Add pytest for tests; add NumPy/OpenCV
+headless/vpype only for the optional Python image conversion feature after Pi
+wheel verification. `vpype` has no repo pin, so choose and document a tested
+version before production pinning.
+
+Java: ARM64 OpenJDK 17 and Maven 3.8+. Build UGS Core and shaded agent locally
+with machine-agent/scripts/build-agent.sh. Keep Java 17 initially; do not move
+to Java 24 without checking JSerialComm native-access flags.
+
+Serial: add the service user to dialout (or actual device group), configure
+device ownership and optional stable-name udev rules, then test reconnects.
+
+DO NOT COPY FROM WINDOWS
+------------------------
+- .venv/ (contains Windows interpreter, DLLs and Scripts/*.exe).
+- node_modules/ (platform-specific optional binaries, including esbuild/Rollup).
+- machine-agent/target/ and attached prebuilt JARs (rebuild with Pi JDK/UGS).
+- .agent-ugs/ checkout/cache (fresh pinned checkout/build is preferable).
+- dist/, build outputs and *.tsbuildinfo (rebuild under Pi; static UI dist may
+  be copied only after separately validating it is architecture-neutral).
+- .pytest_cache/, __pycache__/, *.pyc, temp job directories and browser caches.
+- Windows .bat, .ps1 and MSI output if only deploying runtime (retain source
+  scripts in clone for history, but do not execute them on Pi).
+- IDE state (.idea, most .vscode) and OS files Thumbs.db.
+
+MUST INCLUDE / CLONE
+--------------------
+Clone/transfer the source tree and committed manifests: package.json,
+pnpm-lock.yaml, pnpm-workspace.yaml, all artifacts/lib/scripts source/config,
+dmhc_em, machine-agent source/pom/NOTICE/README/UGS_VERSION.md and
+machine-agent/scripts/build-agent.sh, plus any required attached runtime assets
+referenced by UI. Include the complete current source, lockfile and APIs; do
+not depend on attached JARs. Preserve package lock and fixed UGS commit.
+
+MIGRATION RISK TABLE
+--------------------
+Area                    Current Windows behavior          Pi concern                     Severity  Code change?  Recommended action
+Launcher                .bat + Python invokes PowerShell  .bat/PowerShell unsupported     HIGH      Yes           Create/test Pi shell or systemd flow.
+Agent serial            COM-oriented messages, UGS/JSComm tty permissions/names/adapters   CRITICAL  Config first  dialout + udev; bench-test both heads.
+JSerialComm/UGS         Windows runtime tested only        ARM native UGS/JSComm unknown  HIGH      Maybe         Native Pi build; enumerate/connect/stream tests.
+Node build              Existing Windows node_modules      Native ARM optional packages   HIGH      No            Fresh Pi pnpm frozen install/build.
+Frontend/API routing    Vite proxy in dev launcher         Static hosting needs /api proxy MEDIUM    Config        Reverse proxy or retain Vite preview.
+Image API               `magick` executable               Debian command/package varies  MEDIUM    Config        Install/test ImageMagick or set override.
+Python image conversion Existing Windows venv              cv2/vpype/Potrace native setup MEDIUM    No            Install only if feature needed; test.
+Profiles                Windows user home                  service user's permissions      MEDIUM    No            Explicit service HOME/data location.
+LAN access              UI/Agent local loopback design     Remote client cannot reach agent MEDIUM   Yes, if wanted Keep local control or redesign securely.
+Database                Drizzle supports PostgreSQL        DATABASE_URL absent             LOW       No            Omit unless DB features activated.
+Installer               MSI/WiX/jpackage Windows workflow  no Linux installer              MEDIUM    Yes           Use JAR + systemd/package later.
+Temporary job data      OS temp + in-memory jobs           non-durable/reset on reboot     MEDIUM    Maybe         Add planned data retention if needed.
+
+FINAL ANSWERS
+-------------
+1. Can it realistically run on Raspberry Pi ARM64? Yes, with a fresh native
+   dependency build/install and hardware validation. It is not certified by
+   this repository for Pi today.
+2. Works without source modification: Java agent source conceptually, normal
+   Python G-code partitioner, React/Express source, pnpm workspace, and Bash
+   agent builder are Linux-capable. They still need Pi-specific installation.
+3. Likely needs modifications: Windows one-click launcher; Windows MSI
+   packaging; ControllerSession Windows-only diagnostic wording. Production
+   deployment also needs added service/reverse-proxy/udev configuration.
+4. Blockers: no fundamental source-level ARM blocker found. Operational
+   blockers are unvalidated serial stack, absence of Pi startup setup, and
+   missing ImageMagick when image endpoint is used.
+5. JSerialComm/CNC viability: likely viable. JSerialComm 2.11.4 documents
+   Linux ARMv8_64 support and Linux permissions. Treat actual UGS+USB adapter
+   testing as mandatory before connecting motors or running production G-code.
+6. Change before moving: do not change blindly. First plan a Linux launcher or
+   systemd units, deployment ownership, dialout/udev rules, same-origin proxy,
+   explicit PYTHON, and optional feature package policy. Remove Windows-only
+   launch assumptions in a future reviewed change.
+7. Test after moving: Node/pnpm install and UI/API build; agent Maven/UGS build;
+   JSerialComm enumeration; both device paths/permissions/reconnects; one
+   controller status read, then homing/jog/stream only with safety controls;
+   UI proxy/API jobs; image conversion if enabled; shutdown/reboot persistence.
+
+FILES REQUIRING CHANGE (PROPOSED FUTURE CHANGES ONLY)
+------------------------------------------------------
+- start_local_project.bat: replace or supplement with Linux shell/systemd flow.
+- local_desktop_app.py: make stale-port cleanup and runtime discovery Linux
+  aware, or retire it from Pi deployment in favor of service units.
+- machine-agent/scripts/package-windows.ps1: no Pi use; add separate Linux
+  packaging/service documentation rather than altering it blindly.
+- machine-agent/src/main/java/com/dmhc/agent/controller/ControllerSession.java:
+  replace Windows/COM diagnostic text with platform-neutral wording.
+- New (proposed only): start_raspberry_pi.sh, systemd unit files, a udev rule,
+  and reverse-proxy configuration. None were created by this audit.
+- Optional new requirements manifest only after deciding to support the Python
+  image-to-G-code feature and validating Pi versions.
+
+FILES INSPECTED
+---------------
+Root/build: package.json; pnpm-lock.yaml; pnpm-workspace.yaml; tsconfig.json;
+tsconfig.base.json; .gitignore; start_local_project.bat; local_desktop_app.py;
+run_desktop_app.py; LOCAL_DEPLOYMENT_GUIDE.txt.
+Scripts: scripts/package.json; scripts/check-pnpm.cjs; scripts/post-merge.sh;
+scripts/tsconfig.json; scripts/src/hello.ts.
+UI/API: artifacts/dmhc-ui/package.json, vite.config.ts, index.html,
+components.json and all source pages/components/hooks/lib files; artifacts/api-
+server/package.json, build.mjs, tsconfig.json and all src files/routes/lib/tests;
+artifacts/mockup-sandbox/package.json, vite.config.ts, mockupPreviewPlugin.ts,
+index.html/components config and all source files.
+Libraries: lib/api-spec/package.json, openapi.yaml, orval.config.ts; lib/api-
+zod/package.json, tsconfig and all generated/source types; lib/api-client-
+react/package.json, tsconfig and all source/generated files; lib/db/package.json,
+tsconfig, drizzle.config.ts and schema/index source.
+Java: machine-agent/pom.xml; dependency-reduced-pom.xml; README.md;
+UGS_VERSION.md; NOTICE.md; all Java files under src/main and src/test;
+scripts/build-agent.sh; build-agent.ps1; run-agent.ps1; package-windows.ps1.
+Python: every .py file under dmhc_em, including core, geometry, generation,
+partition, collision, verification, output, postprocess and tests; current
+.venv package inventory (read-only). Binary/cache candidates were inventoried
+but not executed or transferred.

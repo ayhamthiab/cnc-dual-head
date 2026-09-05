@@ -1,0 +1,2116 @@
+DMHC-EM — LOCAL DEPLOYMENT GUIDE
+=================================
+
+This document was generated from the current source tree and configuration.
+It documents the current implementation, not a proposed future architecture.
+
+Important scope:
+- This file is documentation only.
+- No application code was changed to create this guide.
+- Values marked UNKNOWN require verification on the target computer.
+- No secret, password, token, or API key is included in this document.
+
+
+1. PROJECT OVERVIEW
+===================
+
+DMHC-EM currently consists of two different web/server paths and one local
+hardware bridge:
+
+1. The DMHC web frontend:
+   - React 19 and TypeScript.
+   - Built and served by Vite.
+   - Source: artifacts/dmhc-ui/
+   - Browser routes include the workspace, visualization, job history, and
+     Machine Controller pages.
+
+2. The Replit/API application server:
+   - Express 5 and TypeScript.
+   - Source: artifacts/api-server/
+   - Mounted API prefix: /api
+   - Runs the Python DMHC-EM compiler as a child process.
+   - Stores job metadata in memory.
+   - It is separate from the local Machine Agent.
+
+3. The local Machine Agent:
+   - Standalone Java 17 application.
+   - Source: machine-agent/
+   - Default URL: http://127.0.0.1:18888/api/v1
+   - Runs on the computer physically connected to the Arduino/GRBL
+     controllers.
+   - Uses two isolated UGS Core GrblController sessions, one for Head 1 and
+     one for Head 2.
+   - It is intentionally loopback-only and does not expose serial ports to
+     the internet.
+
+4. UGS Core:
+   - Only the ugs-core Maven module is used by the Machine Agent.
+   - The UGS desktop GUI is not launched or required by the Agent.
+   - Source pin:
+     7c7d45b6b94a718589ce4b444865cd790c34882a
+   - Source repository:
+     https://github.com/winder/Universal-G-Code-Sender
+
+5. Arduino/GRBL:
+   - The Machine Agent discovers serial devices through UGS/JSerialComm.
+   - The actual Arduino/GRBL controller is outside this repository and must be
+     connected to the computer through USB/serial.
+   - Real hardware, motors, limit switches, and homing behavior have not been
+     validated by this repository.
+
+6. Database:
+   - lib/db/ is a PostgreSQL/Drizzle scaffold.
+   - The schema currently contains no tables.
+   - The API server currently uses an in-memory Map for jobs and does not use
+     the database package.
+   - A database is not required for the current CNC Machine Controller path.
+
+7. External services:
+   - Normal Machine Agent operation does not call a cloud service.
+   - Building UGS Core may clone/fetch from GitHub and Maven may download
+     dependencies.
+   - The frontend references Google Fonts over HTTPS. Those font requests are
+     external at runtime unless the fonts have already been cached or bundled
+     locally.
+
+Current data flows
+------------------
+
+Machine Controller path:
+
+  Browser
+      |
+      | HTTP REST + Server-Sent Events
+      v
+  DMHC frontend
+      |
+      | direct fetch to http://127.0.0.1:18888/api/v1
+      v
+  Local Machine Agent
+      |
+      | UGS Core GrblController + JSerialComm
+      v
+  COM/USB serial device
+      |
+      v
+  Arduino/GRBL controller
+
+G-code processing path:
+
+  Browser
+      |
+      | same-origin /api requests
+      v
+  DMHC frontend
+      |
+      v
+  Express API server
+      |
+      | child process: python3 -m dmhc_em.main
+      v
+  Python DMHC-EM compiler
+      |
+      v
+  head1.gcode / head2.gcode / gapfill.gcode / report.json
+
+There is currently no API route that automatically sends a generated job to
+the Machine Agent. The operator must download or otherwise obtain the
+generated G-code and use the Machine Controller stream controls separately.
+Gap Fill is not assigned to a physical controller by the Machine Agent.
+
+
+2. COMPLETE RELEVANT FILE TREE
+==============================
+
+The following tree contains the relevant source, configuration, build, and
+deployment files. Dependency folders and generated output are listed separately
+below because they are not source inputs.
+
+.
+|-- package.json
+|-- pnpm-workspace.yaml
+|-- pnpm-lock.yaml
+|-- tsconfig.json
+|-- tsconfig.base.json
+|-- .npmrc
+|-- .gitignore
+|-- .replit
+|-- .replitignore
+|-- replit.md
+|
+|-- artifacts/
+|   |-- dmhc-ui/
+|   |   |-- package.json
+|   |   |-- vite.config.ts
+|   |   |-- tsconfig.json
+|   |   |-- index.html
+|   |   |-- components.json
+|   |   |-- public/
+|   |   |   |-- favicon.svg
+|   |   |   `-- robots.txt
+|   |   |-- .replit-artifact/artifact.toml
+|   |   `-- src/
+|   |       |-- main.tsx
+|   |       |-- App.tsx
+|   |       |-- index.css
+|   |       |-- pages/
+|   |       |   |-- home.tsx
+|   |       |   |-- jobs.tsx
+|   |       |   |-- viz.tsx
+|   |       |   |-- machine.tsx
+|   |       |   `-- not-found.tsx
+|   |       |-- components/
+|   |       |   |-- layout.tsx
+|   |       |   |-- machine-setup-wizard.tsx
+|   |       |   `-- ui/*.tsx
+|   |       |-- hooks/
+|   |       |   |-- use-mobile.tsx
+|   |       |   `-- use-toast.ts
+|   |       `-- lib/utils.ts
+|   |
+|   |-- api-server/
+|   |   |-- package.json
+|   |   |-- build.mjs
+|   |   |-- tsconfig.json
+|   |   |-- .replit-artifact/artifact.toml
+|   |   `-- src/
+|   |       |-- index.ts
+|   |       |-- app.ts
+|   |       |-- lib/logger.ts
+|   |       |-- middlewares/.gitkeep
+|   |       |-- lib/.gitkeep
+|   |       `-- routes/
+|   |           |-- index.ts
+|   |           |-- health.ts
+|   |           `-- jobs.ts
+|   |
+|   `-- mockup-sandbox/
+|       |-- package.json
+|       |-- vite.config.ts
+|       |-- tsconfig.json
+|       |-- index.html
+|       |-- components.json
+|       |-- mockupPreviewPlugin.ts
+|       |-- .replit-artifact/artifact.toml
+|       `-- src/
+|           |-- main.tsx
+|           |-- App.tsx
+|           |-- index.css
+|           |-- .generated/mockup-components.ts
+|           `-- components/ui/*.tsx
+|
+|-- dmhc_em/
+|   |-- __init__.py
+|   |-- main.py
+|   |-- pipeline.py
+|   |-- core/
+|   |   |-- parser.py
+|   |   |-- machine_state.py
+|   |   `-- instruction_stream.py
+|   |-- ir/
+|   |   |-- segment.py
+|   |   |-- toolpath.py
+|   |   `-- graph.py
+|   |-- geometry/
+|   |   |-- density.py
+|   |   |-- projection.py
+|   |   `-- contour.py
+|   |-- partition/
+|   |   |-- engine.py
+|   |   |-- gap.py
+|   |   `-- scheduler.py
+|   |-- generation/
+|   |   |-- generator.py
+|   |   `-- state_builder.py
+|   |-- collision/
+|   |   |-- detector.py
+|   |   `-- validator.py
+|   |-- verification/
+|   |   |-- canonical.py
+|   |   `-- equivalence.py
+|   |-- postprocess/
+|   |   `-- invert.py
+|   |-- output/
+|   |   |-- writer.py
+|   |   `-- reporter.py
+|   `-- tests/test_arc_geometry.py
+|
+|-- machine-agent/
+|   |-- pom.xml
+|   |-- dependency-reduced-pom.xml
+|   |-- README.md
+|   |-- UGS_VERSION.md
+|   |-- NOTICE.md
+|   |-- scripts/
+|   |   |-- build-agent.ps1
+|   |   |-- build-agent.sh
+|   |   |-- run-agent.ps1
+|   |   `-- package-windows.ps1
+|   |-- src/main/java/com/dmhc/agent/
+|   |   |-- Main.java
+|   |   |-- api/MachineHttpServer.java
+|   |   |-- config/AgentConfig.java
+|   |   |-- controller/
+|   |   |   |-- ControllerRegistry.java
+|   |   |   |-- ControllerSession.java
+|   |   |   |-- GrblCommandBuilder.java
+|   |   |   `-- MachineStatusSnapshot.java
+|   |   |-- events/MachineEventPublisher.java
+|   |   |-- profile/MachineProfileStore.java
+|   |   `-- controller/PortLeaseBook.java
+|   `-- src/test/java/com/dmhc/agent/controller/
+|       |-- GrblCommandBuilderTest.java
+|       `-- PortLeaseBookTest.java
+|
+|-- lib/
+|   |-- api-spec/
+|   |   |-- openapi.yaml
+|   |   |-- orval.config.ts
+|   |   `-- package.json
+|   |-- api-client-react/
+|   |   |-- package.json
+|   |   |-- tsconfig.json
+|   |   `-- src/
+|   |       |-- index.ts
+|   |       |-- custom-fetch.ts
+|   |       `-- generated/
+|   |           |-- api.ts
+|   |           `-- api.schemas.ts
+|   |-- api-zod/
+|   |   |-- package.json
+|   |   |-- tsconfig.json
+|   |   `-- src/generated/
+|   |       |-- api.ts
+|   |       `-- types/*.ts
+|   `-- db/
+|       |-- package.json
+|       |-- tsconfig.json
+|       |-- drizzle.config.ts
+|       `-- src/
+|           |-- index.ts
+|           `-- schema/index.ts
+|
+|-- scripts/
+|   |-- package.json
+|   |-- tsconfig.json
+|   |-- post-merge.sh
+|   `-- src/hello.ts
+|
+|-- .agent-ugs/Universal-G-Code-Sender/
+|   `-- UGS checkout used as a local build cache when present
+|
+|-- attached_assets/
+|   `-- user-provided source/reference files; not required by the current
+|       runtime unless a user explicitly uses one as input
+|
+`-- screenshots/
+    |-- machine-controller-large.jpg
+    `-- machine-controller-large-final.jpg
+
+Important file/folder classification
+------------------------------------
+
+package.json:
+  Root pnpm workspace scripts and TypeScript development dependency.
+  Required for installing and coordinating the JavaScript workspaces.
+
+pnpm-workspace.yaml:
+  Workspace package locations, dependency catalog, package-age policy, and
+  platform overrides. Required for the current pnpm install.
+
+pnpm-lock.yaml:
+  Locked JavaScript dependency versions. Required for reproducible installation.
+
+.replit and .replit-artifact/artifact.toml:
+  Replit workflow, artifact, preview, and production service configuration.
+  Not required by the Machine Agent at runtime. Local commands can set the
+  same environment values manually.
+
+artifacts/dmhc-ui/:
+  Browser application. Required for the web interface.
+
+artifacts/dmhc-ui/src/pages/machine.tsx:
+  Direct local-Agent REST/SSE client and Machine Controller UI.
+
+artifacts/dmhc-ui/src/pages/home.tsx:
+  G-code input and processing-job submission UI.
+
+artifacts/dmhc-ui/src/pages/jobs.tsx:
+  In-memory API job history UI and generated-file links.
+
+artifacts/dmhc-ui/src/pages/viz.tsx:
+  Job polling, visualization, inversion, and generated-file download UI.
+
+artifacts/dmhc-ui/vite.config.ts:
+  Requires PORT and BASE_PATH, defines the build output, and configures the
+  Vite dev/preview server.
+
+artifacts/api-server/:
+  Separate Express server for G-code processing and job/visualization APIs.
+  Required for Home, Job History, and Visualization features. Not required for
+  direct Machine Controller-to-Agent communication.
+
+dmhc_em/:
+  Python compiler invoked by the API server or directly through its CLI.
+
+machine-agent/:
+  Standalone hardware bridge. Required for serial controller access, telemetry,
+  jog, settings, offsets, homing, and streaming.
+
+.agent-ugs/:
+  UGS source checkout/cache. It is ignored by .gitignore and is not tracked
+  in the project file list. The build scripts clone/fetch it when necessary.
+
+lib/api-spec/:
+  OpenAPI source of truth for the Express API.
+
+lib/api-client-react/:
+  Orval-generated React Query client used by the frontend for the Express API.
+
+lib/api-zod/:
+  Generated Zod request/response types used by the API server.
+
+lib/db/:
+  PostgreSQL/Drizzle scaffold. Not currently used by the job routes and not
+  required by the current Machine Controller.
+
+artifacts/mockup-sandbox/:
+  Design/mockup development artifact. Not required for production operation.
+
+attached_assets/, screenshots/:
+  Reference/input/output presentation assets. Not required to start the
+  application itself.
+
+Generated or ignored folders
+----------------------------
+
+The current checkout may contain:
+- node_modules/ — installed JavaScript dependencies.
+- artifacts/*/dist/ — generated frontend/API build output.
+- machine-agent/target/ — Maven classes, reports, and the shaded JAR.
+- __pycache__/ — Python bytecode caches.
+- .cache/ and .local/ — Replit/development state.
+- .agent-ugs/ — UGS source/build cache.
+
+These are not source files to copy as a substitute for installation, except
+that a previously built machine-agent/target/dmhc-machine-agent.jar can be
+run directly if its Java runtime is compatible.
+
+
+3. FRONTEND TECHNOLOGY
+======================
+
+Framework:
+  React 19.1.0.
+
+Language:
+  TypeScript, JSX/TSX.
+
+Build tool:
+  Vite. The workspace catalog specifies Vite ^7.3.2; the current lockfile
+  resolves the installed version.
+
+Package manager:
+  pnpm workspaces.
+  The root preinstall script rejects npm/yarn installs and requires a pnpm
+  user agent.
+
+Node.js:
+  .replit selects nodejs-24.
+  No "engines" field is declared in the root or frontend package.json.
+  Exact minimum Node.js version is therefore not declared by this project.
+  Node.js 24 is the configured project runtime and is the safest local choice.
+  If using another Node version, compatibility is UNKNOWN and must be verified.
+
+Routing:
+  Wouter. The router base is derived from import.meta.env.BASE_URL.
+
+State/data:
+  TanStack React Query.
+
+CSS:
+  Tailwind CSS 4 with @tailwindcss/vite.
+  The UI also contains local wrapper components following the shadcn/Radix
+  style.
+
+UI and runtime libraries:
+  - Radix UI component packages for dialogs, selects, tabs, sliders, and other
+    primitives.
+  - lucide-react for icons.
+  - framer-motion.
+  - recharts.
+  - react-hook-form and @hookform/resolvers.
+  - zod.
+  - date-fns.
+  - sonner and local toast components.
+  - embla-carousel-react, vaul, cmdk, input-otp, and other UI helpers listed
+    in artifacts/dmhc-ui/package.json.
+  - @workspace/api-client-react, the generated client for the Express API.
+
+Fonts:
+  - Inter is the primary sans-serif font.
+  - Fira Code is the technical/monospace font.
+  - index.html and src/index.css reference Google Fonts over HTTPS.
+  - Without a cached/local copy, exact font downloads are not available
+    offline; browser fallback fonts can still render the application.
+
+Icons/assets:
+  - lucide-react icons are bundled JavaScript dependencies.
+  - public/favicon.svg and public/robots.txt are local frontend assets.
+
+
+4. FRONTEND STARTUP
+====================
+
+Install dependencies from the project root on Windows PowerShell:
+
+  cd C:\path\to\project
+  pnpm install
+
+The root package is a pnpm workspace. Do not replace this with npm install or
+yarn install.
+
+Start the Vite development frontend from PowerShell:
+
+  cd C:\path\to\project
+  $env:PORT="25308"
+  $env:BASE_PATH="/"
+  pnpm --filter @workspace/dmhc-ui run dev
+
+The frontend package script is:
+
+  vite --config vite.config.ts --host 0.0.0.0
+
+The configured artifact default is:
+
+  Port: 25308
+  URL:  http://localhost:25308/
+
+The source Vite configuration requires both environment variables:
+
+  PORT
+  BASE_PATH
+
+PORT is validated as a positive number and is used for both dev and preview
+servers. BASE_PATH is used as Vite's base and by the Wouter router.
+
+To use another local frontend port:
+
+  $env:PORT="3000"
+  $env:BASE_PATH="/"
+  pnpm --filter @workspace/dmhc-ui run dev
+
+The Machine Controller Agent URL is not a Vite environment variable. It is
+defined in the browser UI and persisted in browser localStorage:
+
+  Default: http://127.0.0.1:18888/api/v1
+  URL key: dmhc.machine.agentUrl
+  Token key: dmhc.machine.agentToken
+
+There is no VITE_API_URL or frontend API URL environment variable in the
+current source. The generated application API calls use relative /api paths.
+
+The frontend also has these package scripts:
+
+  pnpm --filter @workspace/dmhc-ui run typecheck
+  pnpm --filter @workspace/dmhc-ui run build
+  pnpm --filter @workspace/dmhc-ui run serve
+
+Note for Windows:
+  The API server's "dev" package script contains the POSIX shell expression
+  "export NODE_ENV=development". That command is not a PowerShell command.
+  The Windows procedure in this guide uses the API build and start commands
+  separately instead.
+
+
+5. PRODUCTION FRONTEND
+=======================
+
+Create the production frontend build:
+
+  cd C:\path\to\project
+  $env:PORT="25308"
+  $env:BASE_PATH="/"
+  pnpm --filter @workspace/dmhc-ui run build
+
+Generated files are written to:
+
+  artifacts/dmhc-ui/dist/public/
+
+This output is a static frontend bundle. The DMHC web artifact configuration
+serves that directory with a static service and rewrites unknown paths to
+index.html:
+
+  artifacts/dmhc-ui/.replit-artifact/artifact.toml
+
+For a local Vite preview of the generated bundle:
+
+  cd C:\path\to\project
+  $env:PORT="25308"
+  $env:BASE_PATH="/"
+  pnpm --filter @workspace/dmhc-ui run serve
+
+The package's serve script is:
+
+  vite preview --config vite.config.ts --host 0.0.0.0
+
+This serves the bundle at:
+
+  http://localhost:25308/
+
+There is no project-specific Windows static-server script other than Vite's
+preview command. A generic static server can theoretically serve
+artifacts/dmhc-ui/dist/public, but the exact command and SPA rewrite behavior
+of that server are outside this repository and are therefore UNKNOWN here.
+
+A separate web server is not needed for the static frontend itself. However,
+the current frontend has no Vite proxy configuration and has no configurable
+API base URL:
+
+  - frontend origin: http://localhost:25308
+  - API server origin: http://localhost:8080
+  - frontend job requests: relative /api/...
+
+Consequently, running these two processes on separate ports does not make the
+job pages work automatically. The browser will request
+http://localhost:25308/api/..., not http://localhost:8080/api/....
+
+For the full web application, a same-origin reverse proxy or a combined web
+server is required, or the frontend/API code must be changed to support a
+separate API origin. No such local reverse-proxy configuration exists in the
+current project. This is a current blocker for a one-command, fully local
+deployment of all frontend pages.
+
+The Machine Controller page is different: it explicitly calls the local
+Agent URL and can work from the static frontend without the Express API
+server, provided the browser can reach the Agent and CORS/token checks pass.
+
+After JavaScript dependencies and any required assets are installed, the
+frontend bundle itself does not need internet access to execute. Exact Inter
+and Fira Code font downloads still depend on the Google Fonts references unless
+the browser has cached them or the fonts are bundled separately.
+
+
+6. ENVIRONMENT VARIABLES
+========================
+
+No .env, .env.example, or .env.local file was found in the project tree.
+The following table covers source-code references and artifact configuration.
+
+VARIABLE                         REQUIRED?       PURPOSE
+--------------------------------  ---------------  ----------------------------
+PORT                              Yes for UI      Port used by Vite dev/build/
+                                  and API         preview, or Express API
+                                  process         startup. Must be positive.
+                                  separately.
+BASE_PATH                         Yes for UI      Vite base path and Wouter
+                                                  router base. The current
+                                                  artifact value is "/".
+NODE_ENV                          No, but used    API package sets/uses it for
+                                  by behavior     development/production
+                                                  logging/build behavior.
+REPL_ID                           No              If present during a
+                                                  non-production Vite run,
+                                                  cartographer and dev-banner
+                                                  plugins are loaded.
+LOG_LEVEL                         No              API logger level. Defaults
+                                                  to "info".
+DMHC_AGENT_TOKEN                  No              Machine Agent bearer token.
+                                                  If absent, the Agent creates
+                                                  a random token at startup and
+                                                  prints it to the console.
+DMHC_ALLOWED_ORIGIN_SUFFIXES     No              Comma-separated Agent CORS
+                                                  host suffix allowlist.
+DATABASE_URL                      No for current  PostgreSQL connection used
+                                  API runtime     by lib/db if that package is
+                                                  imported. The current API job
+                                                  routes do not import/use it.
+DMHC_UGS_DIR                      No              Optional build-script
+                                                  override for the local UGS
+                                                  checkout location.
+PYTHONPATH                        No              The API server sets this
+                                  manually        automatically to the
+                                                  workspace root for the
+                                                  Python child process.
+
+Examples without real secrets:
+
+  UI:
+    PORT=25308
+    BASE_PATH=/
+
+  API:
+    PORT=8080
+    NODE_ENV=production
+
+  Machine Agent:
+    DMHC_AGENT_TOKEN=[SECRET]
+    DMHC_ALLOWED_ORIGIN_SUFFIXES=localhost,127.0.0.1
+
+The Machine Agent also accepts command-line arguments:
+
+  --port <1024..65535>
+  --token <token>
+  --host 127.0.0.1
+
+The host is rejected if it is not 127.0.0.1 or localhost.
+
+Replit-specific variables/dependencies:
+- REPL_ID controls optional Vite development plugins.
+- .replit supplies nodejs-24, python-base-3.13, and java-graalvm22.3 in the
+  Replit environment.
+- Replit artifact files supply default ports for Replit services.
+- No Replit variable is used by the Machine Agent at normal runtime.
+
+Variables unnecessary for the current offline CNC controller:
+- DATABASE_URL is unnecessary because the current Machine Agent and API job
+  routes do not use the database.
+- REPL_ID is unnecessary for a local production frontend.
+- Replit deployment variables are unnecessary after copying/building the
+  application locally.
+- Any cloud credentials would be unnecessary; none were found in source.
+
+No real token or secret is written in this guide.
+
+
+7. API COMMUNICATION
+====================
+
+There are two separate APIs. They must not be confused.
+
+7A. Express application API used by the G-code pages
+----------------------------------------------------
+
+Base prefix:
+
+  /api
+
+Current local server port from artifact configuration:
+
+  http://localhost:8080
+
+The frontend uses same-origin relative paths. The effective expected URL is
+therefore normally http://<frontend-origin>/api/..., which is why a proxy or
+same-origin server is needed when the API runs on port 8080 separately.
+
+Endpoint: GET /api/healthz
+  Purpose:
+    Express API health check.
+  Request body:
+    None.
+  Required headers:
+    None.
+  Response used:
+    JSON {"status":"ok"}.
+  Frontend use:
+    Generated client exists, but no current UI call to this endpoint was found.
+
+Endpoint: POST /api/process
+  Purpose:
+    Submit raw G-code to the Python DMHC-EM partitioning pipeline.
+  Required headers:
+    Content-Type: application/json.
+  Request body:
+    {
+      "gcodeContent": "raw G-code text",
+      "filename": "program.gcode",
+      "numHeads": 2,
+      "gapWidth": 10.0,
+      "toolRadius": 0,
+      "safetyMargin": 0,
+      "head2ReferenceY": 1200.0,
+      "penUpZ": 5.0,
+      "penDownZ": -1.0,
+      "gapStartY": null
+    }
+  Required field:
+    gcodeContent.
+  Defaults in the server:
+    filename program.gcode
+    numHeads 2
+    gapWidth 10.0
+    head2ReferenceY 1200.0
+    penUpZ 5.0
+    penDownZ -1.0
+    gapStartY null
+  Response used:
+    JSON Job object. The Home page invalidates the job list and navigates to
+    /viz/<job-id> after success.
+  Important current behavior:
+    The API accepts toolRadius and safetyMargin in the request schema, but
+    jobs.ts stores toolRadius=0 and safetyMargin=0 and invokes the Python CLI
+    with --radius 0 --margin 0. The submitted values are not currently used.
+
+Endpoint: GET /api/jobs
+  Purpose:
+    List recent jobs.
+  Request body:
+    None.
+  Required headers:
+    None.
+  Response used:
+    JSON array of Job objects, used by the Job History page.
+  Storage:
+    In-memory Map; all records disappear when the API process restarts.
+
+Endpoint: GET /api/jobs/:jobId
+  Purpose:
+    Get one job's status and metadata.
+  Request body:
+    None.
+  Required headers:
+    None.
+  Response used:
+    JSON Job object. The visualization page polls this endpoint every
+    approximately two seconds until the job is terminal.
+
+Endpoint: GET /api/jobs/:jobId/visualization
+  Purpose:
+    Return visualization data reconstructed from generated G-code and
+    report.json.
+  Request body:
+    None.
+  Required headers:
+    None.
+  Response used:
+    JSON containing segments, densityMap, zones, and bounds.
+
+Endpoint: GET /api/jobs/:jobId/download/head1
+Endpoint: GET /api/jobs/:jobId/download/head2
+Endpoint: GET /api/jobs/:jobId/download/gapfill
+  Purpose:
+    Download one generated G-code file.
+  Request body:
+    None.
+  Required headers:
+    None.
+  Response:
+    text/plain with Content-Disposition attachment.
+  Frontend use:
+    Download links appear on Jobs and Visualization pages.
+
+Endpoint: POST /api/jobs/:jobId/invert
+  Purpose:
+    Return selected generated files with X and/or Y values inverted.
+  Required headers:
+    Content-Type: application/json.
+  Request body:
+    {
+      "files": ["head1", "head2", "gapfill"],
+      "invertX": true,
+      "invertY": false
+    }
+  Validation:
+    files must be a non-empty array containing only head1, head2, gapfill.
+    At least one of invertX or invertY must be true.
+  Response used:
+    JSON object mapping each selected file key to inverted G-code text.
+
+Express API implementation notes:
+- artifacts/api-server/src/app.ts mounts the router at /api.
+- cors() is called with its default permissive configuration.
+- JSON and text bodies have a 50 MB limit.
+- The server has no authentication middleware.
+- jobs.ts creates temporary directories and invokes:
+
+    python3 -m dmhc_em.main
+
+- The API server passes PYTHONPATH=<workspace root> to that child process.
+- The API has no route that connects processing jobs to the Machine Agent.
+
+7B. Local Machine Agent API used by Machine Controller
+-------------------------------------------------------
+
+Base URL:
+
+  http://127.0.0.1:18888/api/v1
+
+The UI validates that the Agent URL:
+- uses http, not https;
+- has hostname 127.0.0.1, localhost, or ::1;
+- ends exactly with /api/v1;
+- has no query string or hash.
+
+The UI's generic fetch wrapper appends the endpoint path to this base URL and
+adds the following header when a token is present:
+
+  Authorization: Bearer <agent-token>
+
+POST requests created by the UI use:
+
+  Content-Type: application/json
+
+The following endpoints are called by artifacts/dmhc-ui/src/pages/machine.tsx.
+The {id} value is Head 1 or Head 2.
+
+GET /api/v1/health
+  Purpose:
+    Check whether the local Agent is reachable.
+  Headers:
+    No token required by the Agent.
+  Response used:
+    Agent health object; the UI changes its Agent status to online.
+
+GET /api/v1/serial-ports
+  Purpose:
+    Discover available serial ports.
+  Headers:
+    Authorization: Bearer <agent-token>.
+  Response used:
+    {"ports":[...]} and the UI populates the serial-port selectors.
+
+GET /api/v1/profiles
+  Purpose:
+    Load locally stored Machine Profiles.
+  Headers:
+    Authorization: Bearer <agent-token>.
+  Response used:
+    {"profiles":[...]}.
+
+POST /api/v1/profiles
+  Purpose:
+    Save a local profile containing both heads' selections and optional setup
+    drafts. This does not connect or move either controller.
+  Headers:
+    Authorization: Bearer <agent-token>
+    Content-Type: application/json
+  Body:
+    {
+      "name": "profile name",
+      "head1": {"port": "COM4", "baudRate": 115200},
+      "head2": {"port": "COM5", "baudRate": 115200},
+      "head1Setup": {...},
+      "head2Setup": {...}
+    }
+  Response used:
+    Saved profile object.
+
+DELETE /api/v1/profiles/:id
+  Purpose:
+    Delete one local profile.
+  Headers:
+    Authorization: Bearer <agent-token>.
+  Body:
+    None.
+
+GET /api/v1/heads/{id}/status
+  Purpose:
+    Get one head's state, firmware, alarm, MPos, WPos, limit telemetry, feed,
+    spindle, and stream counters.
+  Headers:
+    Authorization: Bearer <agent-token>.
+  Response used:
+    Machine status snapshot.
+
+GET /api/v1/heads/{id}/settings
+  Purpose:
+    Read the cached GRBL settings for one connected head.
+  Headers:
+    Authorization: Bearer <agent-token>.
+  Response used:
+    {"settings":[...], "refreshed":false}.
+
+GET /api/v1/heads/{id}/settings?refresh=true
+  Purpose:
+    Request a real $$ settings refresh through UGS Core and return the result.
+  Headers:
+    Authorization: Bearer <agent-token>.
+  Response used:
+    {"settings":[...], "refreshed":true}.
+
+POST /api/v1/heads/{id}/connect
+  Purpose:
+    Explicitly connect one selected head to one serial port.
+  Headers:
+    Authorization: Bearer <agent-token>
+    Content-Type: application/json
+  Body:
+    {"port":"COM4","baudRate":115200}
+  Response used:
+    Head/controller identity, connected flag, firmware, and status snapshot.
+  Behavior:
+    No connection is made on Agent startup. The same serial port cannot be
+    claimed by both heads.
+
+POST /api/v1/heads/{id}/disconnect
+  Purpose:
+    Explicitly disconnect one head.
+  Headers:
+    Authorization: Bearer <agent-token>
+  Body:
+    None.
+
+POST /api/v1/heads/{id}/jog
+  Purpose:
+    Incremental jog.
+  Headers:
+    Authorization: Bearer <agent-token>
+    Content-Type: application/json
+  Body example:
+    {"confirm":true,"x":10.0,"feedRate":1000}
+  Details:
+    x, y, and z are optional. feedRate is required and positive. The UI sends
+    only the selected non-zero axis. The backend builds a GRBL $J command,
+    waits for GRBL acceptance, and requests a fresh status report.
+  Safety:
+    confirm:true is required by the Agent and the UI also displays a
+    confirmation dialog.
+
+POST /api/v1/heads/{id}/work-zero
+  Purpose:
+    Set work zero for X, Y, Z, or ALL without changing machine coordinates.
+  Headers:
+    Authorization: Bearer <agent-token>
+    Content-Type: application/json
+  Body examples:
+    {"confirm":true,"axis":"X"}
+    {"confirm":true,"axis":"Y"}
+    {"confirm":true,"axis":"Z"}
+    {"confirm":true,"axis":"ALL"}
+  Safety:
+    confirm:true is required. This is separate from the display-only MPos and
+    WPos cards.
+
+POST /api/v1/heads/{id}/work-offset
+  Purpose:
+    Set selected work-coordinate offsets without physically moving the
+    machine.
+  Headers:
+    Authorization: Bearer <agent-token>
+    Content-Type: application/json
+  Body examples:
+    {"confirm":true,"x":50.0}
+    {"confirm":true,"y":10.25,"z":-1.0}
+  Details:
+    x, y, and z are optional numeric values. The backend uses G10 L20 P0
+    command generation and waits for GRBL acceptance.
+
+POST /api/v1/heads/{id}/settings
+  Purpose:
+    Update one GRBL setting.
+  Headers:
+    Authorization: Bearer <agent-token>
+    Content-Type: application/json
+  Body:
+    {"confirm":true,"key":"$100","value":"250"}
+  Response used:
+    The UGS-confirmed setting and a current status snapshot.
+  Safety:
+    confirm:true is required. The Machine Agent returns the value confirmed by
+    GRBL/UGS and rejects a mismatch.
+
+POST /api/v1/heads/{id}/setup
+  Purpose:
+    Apply a validated group of machine-setup GRBL settings.
+  Headers:
+    Authorization: Bearer <agent-token>
+    Content-Type: application/json
+  Body:
+    {"confirm":true,"settings":{"$100":"250","$101":"250"}}
+  Safety:
+    confirm:true is required. Only the supported numeric setup keys and ranges
+    validated in MachineHttpServer.java are accepted.
+
+POST /api/v1/heads/{id}/home
+  Purpose:
+    Start the configured homing cycle.
+  Headers:
+    Authorization: Bearer <agent-token>
+    Content-Type: application/json
+  Body:
+    {"confirm":true}
+  Safety:
+    confirm:true is required and physical movement may occur.
+
+POST /api/v1/heads/{id}/command
+  Purpose:
+    Send one raw console command.
+  Headers:
+    Authorization: Bearer <agent-token>
+    Content-Type: application/json
+  Body:
+    {"confirm":true,"command":"$H"}
+  Validation:
+    One command, no CR/LF, maximum 256 characters.
+
+POST /api/v1/heads/{id}/reset
+  Purpose:
+    Request a GRBL soft reset.
+  Body:
+    {"confirm":true}
+  Headers:
+    Authorization: Bearer <agent-token>, Content-Type: application/json
+
+POST /api/v1/heads/{id}/unlock
+  Purpose:
+    Request GRBL alarm unlock.
+  Body:
+    {"confirm":true}
+  Headers:
+    Authorization: Bearer <agent-token>, Content-Type: application/json
+
+POST /api/v1/heads/{id}/stream
+  Purpose:
+    Start streaming G-code through UGS Core.
+  Body:
+    {"confirm":true,"gcode":"G21\nG90\nG0 X0 Y0"}
+  Headers:
+    Authorization: Bearer <agent-token>, Content-Type: application/json
+  Safety:
+    confirm:true is required. The controller may move immediately.
+
+POST /api/v1/heads/{id}/pause
+POST /api/v1/heads/{id}/resume
+POST /api/v1/heads/{id}/stop
+  Purpose:
+    Pause, resume, or stop the active stream.
+  Body:
+    {"confirm":true}
+  Headers:
+    Authorization: Bearer <agent-token>, Content-Type: application/json
+
+GET /api/v1/events
+  Purpose:
+    Live Agent and controller telemetry using Server-Sent Events.
+  Authorization:
+    Browser EventSource cannot add a custom Authorization header, so the UI
+    appends the token as:
+
+    /api/v1/events?token=<agent-token>
+
+  Response:
+    Content-Type: text/event-stream; charset=utf-8.
+    The Agent sends agent.ready and controller.status events and a keepalive
+    comment approximately every 15 seconds.
+  Frontend behavior:
+    Parses JSON messages, applies status snapshots, logs events, and lets the
+    browser EventSource reconnect after an error.
+
+Agent endpoints implemented but not currently called by the UI:
+
+GET /api/v1/agent/status
+GET /api/v1/controllers
+GET /api/v1/status
+GET /api/v1/ports
+GET /api/v1/controllers/{id}/status
+GET /api/v1/controllers/{id}/settings
+POST /api/v1/controllers/{id}/{action}
+
+The canonical implementation and route aliases are in:
+
+  machine-agent/src/main/java/com/dmhc/agent/api/MachineHttpServer.java
+
+
+8. MACHINE AGENT INTEGRATION
+============================
+
+Agent executable:
+
+  target/dmhc-machine-agent.jar
+
+Default listener:
+
+  http://127.0.0.1:18888/api/v1
+
+The Agent binds only to 127.0.0.1 by default. AgentConfig rejects a public
+host; this is intentional because the Agent controls physical serial devices.
+
+Token behavior:
+- DMHC_AGENT_TOKEN can provide a stable token.
+- --token can provide a token for one invocation.
+- If neither is provided, a random URL-safe token is created at startup.
+- The token is printed by Main.java.
+- The frontend stores the entered URL and token in that browser's localStorage.
+- The frontend does not send the Agent token to the Express API server.
+
+Authorization format:
+
+  Authorization: Bearer <agent-token>
+
+The Agent accepts that header for protected HTTP endpoints. For SSE, it also
+accepts the token query parameter because standard browser EventSource does not
+support custom request headers.
+
+CORS implementation:
+- MachineHttpServer.java checks the Origin host before adding CORS headers.
+- Default allowed host suffixes are:
+    .replit.dev
+    .replit.app
+    localhost
+    127.0.0.1
+- DMHC_ALLOWED_ORIGIN_SUFFIXES replaces the default set when non-empty.
+- Allowed request headers:
+    Authorization, Content-Type
+- Allowed methods:
+    GET, POST, OPTIONS
+- Requests without an Origin are allowed for curl/local diagnostics.
+- An invalid Origin receives HTTP 403.
+
+For a local browser frontend served as http://localhost:25308, the default
+Agent CORS allowlist includes localhost. The frontend can therefore call the
+Agent directly if:
+- the Agent is running;
+- the URL is correct;
+- the token is correct for protected endpoints;
+- the browser is served over HTTP, not opened as a file;
+- no local firewall or browser extension blocks loopback requests.
+
+The current UI rejects remote Agent URLs, so the frontend cannot be configured
+to use a remote Machine Agent without changing source code.
+
+Offline changes required:
+- No code change is required for the Machine Controller page to target the
+  default local Agent URL.
+- The Agent JAR and Java runtime must already be installed.
+- The browser must be able to load the frontend from a local HTTP server.
+- Google Fonts must be cached or replaced with local files if exact typography
+  is required with no network.
+- The full job-processing pages still need a local same-origin API arrangement;
+  that proxy is not included.
+
+
+9. CORS / LOCALHOST
+===================
+
+Frontend-to-Agent:
+
+  http://localhost:<frontend-port>
+      ->
+  http://127.0.0.1:18888
+
+This is cross-origin because the host and/or port differs. The Machine Agent
+implements CORS itself. It answers OPTIONS requests and allows Authorization
+and Content-Type headers for origins whose host matches its allowlist.
+
+The current default allowlist covers:
+- localhost
+- 127.0.0.1
+- Replit development domains
+- Replit application domains
+
+Therefore a frontend served at http://localhost:25308 can communicate with
+the default Agent without an Agent code change, assuming the token and Agent
+are correct.
+
+Do not use a browser file URL such as file:///C:/.../index.html as the normal
+deployment method. The current Agent's Origin handling does not explicitly
+allow a file/null origin, and the frontend's relative /api job calls also
+need an HTTP origin.
+
+Frontend-to-Express API:
+
+The Express server uses permissive cors(), but this does not solve the port
+mapping problem. CORS can allow a cross-origin request, but the frontend still
+does not know to send /api requests to port 8080. It sends them to its own
+origin because the paths are relative.
+
+Current result:
+- Direct Machine Controller -> Agent: supported.
+- Frontend job pages -> API on a separate port: not wired locally.
+- A same-origin reverse proxy or application-server integration is required
+  for the complete UI. No such configuration is present.
+
+
+10. REPLIT DEPENDENCIES
+=======================
+
+The current project depends on Replit in these areas:
+
+1. Artifact/workflow configuration:
+   - .replit
+   - artifacts/*/.replit-artifact/artifact.toml
+   - Used to start services and provide preview/production routing in Replit.
+   - Not needed by Java Agent runtime.
+   - Can be bypassed locally by setting environment variables and running the
+     package commands directly.
+
+2. Vite development plugins:
+   - @replit/vite-plugin-cartographer
+   - @replit/vite-plugin-dev-banner
+   - @replit/vite-plugin-runtime-error-modal
+   - Cartographer and dev-banner are conditionally loaded only when
+     NODE_ENV is not production and REPL_ID is defined.
+   - The runtime-error-modal plugin is included by the Vite config.
+   - These are not part of the Machine Agent hardware path.
+
+3. Replit runtime modules:
+   - .replit selects nodejs-24, python-base-3.13, java-graalvm22.3.
+   - A clean Windows machine must install equivalent runtimes separately.
+
+4. Replit preview routing:
+   - The artifact router makes the web service available through Replit's
+     preview path and routes the API artifact at /api.
+   - This routing masks the fact that the UI uses relative /api URLs.
+   - It is not reproduced by the current local commands.
+
+5. Replit package configuration:
+   - pnpm-workspace.yaml contains Replit package catalogs and platform
+     overrides.
+   - It explicitly removes several non-linux-x64 optional binaries, including
+     Linux ARM/ARM64 variants for tools such as esbuild.
+   - This is a Raspberry Pi compatibility risk.
+
+6. Replit cloud/API server:
+   - The Express server can run in Replit, but it is ordinary Node/Express
+     code and can be run locally if Node, pnpm, and Python are installed.
+   - It is not the hardware Agent and cannot access the local COM ports through
+     the Agent architecture.
+
+What breaks if Replit is unavailable:
+- Replit preview routing and workflows are unavailable.
+- Conditional development plugins are unavailable; normal Vite development
+  remains possible if their packages are installed or production mode avoids
+  them.
+- The local Machine Agent itself does not need Replit.
+- The browser Machine Controller can use a locally served frontend and the
+  loopback Agent.
+- The complete job UI needs a local solution for the relative /api paths.
+- Google Fonts may not load unless cached or made local.
+
+Intended offline machine-operation path:
+
+  Local Browser Frontend
+      |
+      v
+  Local Machine Agent :18888
+      |
+      v
+  UGS Core
+      |
+      v
+  COM/USB
+      |
+      v
+  Arduino/GRBL
+
+No internet is required during normal Agent/controller operation after all
+software, dependencies, drivers, and assets have been installed.
+
+
+11. BACKEND / SERVER LOCAL DEPLOYMENT
+=====================================
+
+11A. Express API server
+-----------------------
+
+Technology:
+  Node.js, TypeScript/ESM, Express 5.2.1, pino logging, esbuild bundle.
+
+Location:
+  artifacts/api-server/
+
+Configured port:
+  8080 in artifacts/api-server/.replit-artifact/artifact.toml.
+  Source code requires PORT to be explicitly provided.
+
+Build:
+
+  cd C:\path\to\project
+  pnpm --filter @workspace/api-server run build
+
+Generated server:
+
+  artifacts/api-server/dist/index.mjs
+
+Start directly from PowerShell:
+
+  $env:PORT="8080"
+  $env:NODE_ENV="production"
+  node artifacts/api-server/dist/index.mjs
+
+The package's documented development script is:
+
+  pnpm --filter @workspace/api-server run dev
+
+That script expands to:
+
+  export NODE_ENV=development && pnpm run build && pnpm run start
+
+Because export is POSIX syntax, use Git Bash for that exact script or use the
+PowerShell build/start sequence above.
+
+Required environment:
+  PORT.
+
+Optional environment:
+  NODE_ENV and LOG_LEVEL.
+
+Python dependency:
+  The server invokes the executable name python3. A Windows installation must
+  provide a callable python3 command or the API process will fail to start a
+  compiler child process. The source does not fall back to python.
+
+Workspace dependency:
+  PYTHONPATH is set by jobs.ts to the workspace root. The dmhc_em package must
+  remain importable from that root.
+
+Required for CNC controller:
+  No, not for direct Machine Controller -> Machine Agent operation.
+  Yes, for current Home, Jobs, Visualization, and processing features.
+
+11B. Python DMHC-EM compiler
+----------------------------
+
+Technology:
+  Python 3 code with no requirements.txt or pyproject.toml dependency file
+  found in the project.
+
+Direct CLI:
+
+  python3 -m dmhc_em.main --input <file.gcode> --output <directory>
+
+Optional arguments:
+
+  --heads <N>
+  --gap <mm>
+  --radius <mm>
+  --margin <mm>
+  --head2-ref-y <Y>
+  --pen-up-z <Z>
+  --pen-down-z <Z>
+  --spindle <RPM>
+  --depth <mm>
+  --gap-start-y <Y>
+
+The CLI writes:
+
+  head1.gcode
+  head2.gcode
+  gapfill.gcode
+  report.json
+
+and prints a JSON result to stdout.
+
+The API server invokes:
+
+  python3 -m dmhc_em.main
+
+with a temporary input/output directory and the relevant options. It writes
+temporary output under the system temporary directory. The current API does
+not persist jobs or move these files into a database.
+
+11C. Local Machine Agent
+------------------------
+
+Technology:
+  Java 17 application, Maven build, shaded executable JAR, Gson, UGS Core.
+
+Location:
+  machine-agent/
+
+Build on Windows:
+
+  cd C:\path\to\project\machine-agent
+  .\scripts\build-agent.ps1
+
+The build script:
+- checks Java and Maven;
+- clones/fetches the UGS repository into .agent-ugs unless DMHC_UGS_DIR is
+  supplied;
+- checks out commit 7c7d45b6b94a718589ce4b444865cd790c34882a;
+- installs only ugs-core into the local Maven cache;
+- builds/tests/packages the Machine Agent;
+- copies UGS-COPYING and NOTICE.md to target/third-party-licenses.
+
+Run an already-built JAR:
+
+  cd C:\path\to\project\machine-agent
+  java -jar .\target\dmhc-machine-agent.jar
+
+Run with the supplied PowerShell wrapper:
+
+  .\scripts\run-agent.ps1
+
+The wrapper defaults to port 18888 and can accept:
+
+  .\scripts\run-agent.ps1 -Port 18888 -Token "<local-token>"
+
+The Agent prints its effective URL and token. Enter that token in the
+frontend Machine Controller page and click Save & check.
+
+No serial connection, homing, jog, reset, or stream starts merely because the
+Agent process starts. Controller operations require explicit API requests and
+protected motion/settings endpoints require confirm:true.
+
+Required for CNC controller:
+  Yes.
+
+11D. Mockup sandbox
+-------------------
+
+Technology:
+  Separate Vite development artifact.
+
+Configured port:
+  8081.
+
+Purpose:
+  Component previews/design development only.
+
+Required for normal CNC operation:
+  No.
+
+
+12. DATABASE
+============
+
+Database technology:
+  PostgreSQL through node-postgres and Drizzle ORM.
+
+Files:
+  lib/db/src/index.ts
+  lib/db/src/schema/index.ts
+  lib/db/drizzle.config.ts
+  lib/db/package.json
+
+Current schema:
+  No tables or migrations are present. schema/index.ts exports an empty
+  placeholder.
+
+Connection behavior:
+  lib/db/src/index.ts throws if DATABASE_URL is absent.
+  drizzle.config.ts also requires DATABASE_URL.
+
+Current API usage:
+  The API package declares @workspace/db, but the current job routes use an
+  in-memory Map and do not import or query the database package.
+
+Local database startup:
+  UNKNOWN — no local PostgreSQL service, schema, migration, or database
+  startup configuration is included in this project.
+
+The lib/db package has these database-related scripts:
+
+  pnpm --filter @workspace/db run push
+  pnpm --filter @workspace/db run push-force
+
+They require DATABASE_URL and there are currently no actual application tables
+to push. Do not run push-force unless a future schema is intentionally added.
+
+CNC requirement:
+  The Machine Agent and current Machine Controller do not require PostgreSQL.
+  The current system can operate without the database for local hardware
+  control. Job history is lost when the Express API restarts.
+
+
+13. OFFLINE OPERATION
+=====================
+
+Required at installation time
+-----------------------------
+
+For the Machine Controller path on Windows:
+
+- Windows 10/11 or a compatible Windows system.
+- Java JDK 17 or newer for the Machine Agent.
+- Maven for building the Agent.
+- Git for the first UGS checkout/build.
+- pnpm.
+- Node.js. Node.js 24 is the configured project runtime; exact minimum is
+  not declared in package.json.
+- Python with a callable python3 executable if the Express processing server
+  will be used.
+- A browser.
+- Arduino/GRBL USB serial drivers.
+- npm package dependencies installed by pnpm install.
+- Maven dependencies, including the pinned UGS Core module.
+- The Machine Agent JAR, either built locally or copied from a compatible
+  build.
+
+Internet may be needed during installation/build for:
+- GitHub UGS clone/fetch.
+- Maven dependency downloads.
+- pnpm package installation.
+- Google Fonts download if fonts are not otherwise supplied.
+
+Required during normal offline operation
+-----------------------------------------
+
+For direct Machine Controller operation:
+- Browser.
+- A locally served frontend build or frontend dev server.
+- Running Java Machine Agent.
+- Correct local Agent token in the browser.
+- Arduino/GRBL devices connected by USB/serial.
+- Installed serial drivers and permission to access the selected ports.
+- UGS Core already packaged into the Agent JAR/build.
+
+For local G-code processing/job pages:
+- All items above as applicable.
+- Running Express API server.
+- Node.js runtime and built API bundle.
+- Python runtime and callable python3.
+- dmhc_em source package.
+- A same-origin proxy or combined local web server for frontend /api calls.
+
+Not required during normal offline operation:
+- Replit account or Replit workflows.
+- Cloud API credentials.
+- PostgreSQL, for the current controller and current in-memory API jobs.
+- Git, after the Agent and all dependencies have already been built.
+- Maven, after a usable Machine Agent JAR has already been built.
+- Internet access, except for uncached external assets such as Google Fonts.
+
+Current offline blockers/limitations:
+1. The current frontend has relative /api calls but no API base URL or Vite
+   proxy. Frontend and Express API on separate local ports do not automatically
+   connect.
+2. The API server hardcodes python3, which may not be the executable name
+   available on a clean Windows installation.
+3. Exact custom fonts reference Google Fonts and are not fully local.
+4. Raspberry Pi/ARM operation is not validated and workspace platform
+   overrides remove several ARM binaries.
+5. The Agent has not been tested here with real motors, GRBL hardware, limit
+   switches, homing, or production USB drivers.
+6. Generated job storage is temporary/in-memory and is not a durable offline
+   job database.
+
+
+14. WINDOWS LOCAL DEPLOYMENT
+============================
+
+Step 1 — Install prerequisites
+------------------------------
+
+Install:
+- Node.js 24 (the configured project version; if using another version,
+  verify it because no engines field is declared).
+- pnpm.
+- Java JDK 17 or newer.
+- Maven.
+- Git.
+- Python with a python3 command if G-code processing will be used.
+- A supported Arduino/GRBL serial/USB driver.
+- A browser.
+
+Verify from PowerShell:
+
+  node --version
+  pnpm --version
+  java --version
+  mvn --version
+  git --version
+  python3 --version
+
+If python3 is not recognized, the current API server cannot launch its Python
+child process without a source change or a Windows installation that exposes
+that executable name. This guide does not silently substitute python.
+
+Step 2 — Copy or clone the project
+----------------------------------
+
+From the directory containing the project:
+
+  cd C:\path\to\project
+
+The repository itself contains the DMHC source and Machine Agent source.
+The .agent-ugs directory may be absent because it is ignored; the Agent build
+script creates/fetches it.
+
+Step 3 — Install frontend/API dependencies
+------------------------------------------
+
+From the project root:
+
+  pnpm install
+
+Step 4 — Build the Machine Agent
+--------------------------------
+
+Open PowerShell:
+
+  cd C:\path\to\project\machine-agent
+  .\scripts\build-agent.ps1
+
+This step may require internet access for the UGS GitHub checkout and Maven
+dependencies. It produces:
+
+  target\dmhc-machine-agent.jar
+
+Step 5 — Build the frontend
+---------------------------
+
+From a project-root PowerShell terminal:
+
+  cd C:\path\to\project
+  $env:PORT="25308"
+  $env:BASE_PATH="/"
+  pnpm --filter @workspace/dmhc-ui run build
+
+Step 6 — Start the frontend
+---------------------------
+
+For local development:
+
+  cd C:\path\to\project
+  $env:PORT="25308"
+  $env:BASE_PATH="/"
+  pnpm --filter @workspace/dmhc-ui run dev
+
+Or for the production bundle already built:
+
+  cd C:\path\to\project
+  $env:PORT="25308"
+  $env:BASE_PATH="/"
+  pnpm --filter @workspace/dmhc-ui run serve
+
+Open:
+
+  http://localhost:25308/
+
+Step 7 — Start the Express API server if processing/jobs are required
+----------------------------------------------------------------------
+
+In a second project-root PowerShell terminal:
+
+  cd C:\path\to\project
+  $env:PORT="8080"
+  $env:NODE_ENV="production"
+  pnpm --filter @workspace/api-server run build
+  node artifacts/api-server/dist/index.mjs
+
+This server is required for current Home, Jobs, and Visualization requests,
+but the separate port does not currently satisfy the frontend's relative
+/api paths by itself. A local reverse proxy/same-origin configuration is still
+needed for those pages to communicate with this API.
+
+Step 8 — Connect the Arduino/GRBL hardware
+-------------------------------------------
+
+Connect each controller and install its Windows serial driver. Confirm the
+actual COM names in Windows Device Manager.
+
+No connection or movement occurs just because the Agent starts.
+
+Step 9 — Start the Machine Agent
+--------------------------------
+
+In a third PowerShell terminal:
+
+  cd C:\path\to\project\machine-agent
+  java -jar .\target\dmhc-machine-agent.jar
+
+Expected base URL:
+
+  http://127.0.0.1:18888/api/v1
+
+Copy the token printed by the Agent. Do not paste it into a public document.
+
+Step 10 — Configure Agent URL and token
+---------------------------------------
+
+In the browser:
+1. Open Machine Controller.
+2. Leave Agent API URL as:
+     http://127.0.0.1:18888/api/v1
+3. Enter the token printed by the Agent.
+4. Click Save & check.
+5. Confirm that the Agent status changes to online.
+
+The URL and token are stored in this browser's localStorage. They are not sent
+to the Express API server.
+
+Step 11 — Verify communication
+------------------------------
+
+Agent health is token-free:
+
+  curl.exe http://127.0.0.1:18888/api/v1/health
+
+API health, if the Express server is running:
+
+  curl.exe http://localhost:8080/api/healthz
+
+Protected Agent diagnostics require the printed token:
+
+  curl.exe -H "Authorization: Bearer <agent-token>" http://127.0.0.1:18888/api/v1/serial-ports
+
+Step 12 — Verify Head 1
+-----------------------
+
+In Machine Controller:
+1. Refresh Ports.
+2. Select Head 1's actual COM port.
+3. Select the actual baud rate.
+4. Click Connect.
+5. Confirm that Head 1 reports Connected and a firmware/status snapshot.
+6. Verify MPos/WPos display only.
+7. Read/refresh GRBL settings only after confirming the intended action.
+
+Do not test physical motion until the work area is clear and the controller
+hardware has been independently checked.
+
+Step 13 — Verify Head 2
+-----------------------
+
+Repeat the same process for Head 2 using its own serial port and baud rate.
+Head 1 and Head 2 are separate sessions. The Agent rejects a port that is
+already owned by the other head.
+
+Gap Fill has no assigned controller in the current implementation. Do not
+send a generated Gap Fill program to a head by assumption.
+
+
+15. RASPBERRY PI DEPLOYMENT
+===========================
+
+Current support status:
+
+  UNKNOWN — Raspberry Pi/ARM is not documented or hardware-tested by this
+  project. Do not claim production compatibility from the current source.
+
+Machine Agent:
+- The Agent targets Java release 17.
+- The implementation uses Java HTTP server APIs, UGS Core, and JSerialComm.
+- The Java source is not explicitly Windows-only.
+- The supplied build-agent.sh is a Bash/Maven build and is more suitable for
+  Linux than the PowerShell scripts.
+- No Linux service file, systemd unit, udev rule, ARM artifact, or Pi setup
+  procedure exists.
+- The actual JSerialComm native support for the selected Raspberry Pi OS and
+  architecture must be verified.
+- The UGS source commit must be built for the Pi's OS/architecture.
+- USB serial device names and permissions must be verified on the Pi.
+
+Frontend:
+- A prebuilt static frontend can theoretically be served on a Pi without
+  Node.js at runtime.
+- Building the current Node workspace on ARM is not supported by an explicit
+  compatibility guarantee.
+- pnpm-workspace.yaml removes multiple ARM optional binaries, including
+  esbuild Linux ARM/ARM64 variants and other platform packages.
+- The current Vite/API build on ARM is therefore UNKNOWN and may fail.
+
+Express API/Python:
+- The API uses Node.js and invokes python3.
+- Python code is generally portable in source form, but the API has no Pi
+  configuration or service file.
+- The API requires a Node runtime and Python installation if job processing is
+  used.
+- The current database is not required by the API routes in practice.
+
+Windows-only parts:
+- build-agent.ps1, run-agent.ps1, and package-windows.ps1 are Windows scripts.
+- The MSI packaging path requires jpackage and WiX and is Windows-specific.
+- COM naming in the documentation is Windows-oriented.
+- The core Java source is not proven Windows-only, but Linux/Pi operation is
+  not validated.
+
+Likely rebuild requirements:
+1. Install a Java 17 ARM-compatible JDK.
+2. Build UGS Core and the Machine Agent natively for the Pi.
+3. Verify JSerialComm native support on the exact Pi OS/architecture.
+4. Add Linux serial permissions/udev configuration.
+5. Replace the Windows-only MSI workflow with a Linux launch/service method.
+6. Verify Node/pnpm/esbuild/Vite on ARM or copy a prebuilt frontend bundle.
+7. Add a local same-origin frontend/API arrangement for job pages.
+8. Test real Arduino/GRBL hardware and all safety paths on the Pi.
+
+No Raspberry Pi deployment command is provided as an exact working command
+because the repository does not provide or validate one.
+
+
+16. PORTS
+=========
+
+COMPONENT                    DEFAULT PORT       PROTOCOL        PURPOSE
+---------------------------  -----------------  --------------  ----------------
+DMHC frontend dev/preview   25308              HTTP            Browser UI
+Express API server          8080               HTTP            /api health/jobs
+Machine Agent               18888              HTTP            /api/v1 local API
+Machine Agent SSE            18888              HTTP/SSE        /api/v1/events
+Mockup sandbox              8081               HTTP            Development only
+Arduino/GRBL serial         No TCP port        USB/serial      Physical control
+
+Port facts:
+- 25308 is supplied by the dmhc-ui artifact configuration. Vite itself
+  requires PORT and does not hardcode this value in source.
+- 8080 is supplied by the api-server artifact configuration. Express itself
+  requires PORT and does not hardcode this value in source.
+- 18888 is the Machine Agent source default and the frontend default URL.
+- 8081 is the mockup-sandbox artifact port and is not required for CNC use.
+- SSE is not a separate server; it shares the Machine Agent HTTP port.
+
+Changing ports:
+- Frontend: set PORT and update the browser URL.
+- Express API: set PORT and start the API with that value.
+- Machine Agent: use --port or run-agent.ps1 -Port, then update the frontend
+  Agent URL to the same port.
+- A separate Express API port still needs a same-origin proxy or frontend/API
+  integration because current frontend calls are relative /api paths.
+
+
+17. EXACT STARTUP COMMANDS
+==========================
+
+QUICK START — WINDOWS
+---------------------
+
+These commands assume:
+- pnpm dependencies are installed;
+- the Machine Agent JAR has already been built;
+- python3 is available if the API server is used.
+
+TERMINAL 1 — FRONTEND
+
+  cd C:\path\to\project
+  $env:PORT="25308"
+  $env:BASE_PATH="/"
+  pnpm --filter @workspace/dmhc-ui run dev
+
+Open:
+
+  http://localhost:25308/
+
+TERMINAL 2 — BACKEND (required for current job-processing features)
+
+  cd C:\path\to\project
+  $env:PORT="8080"
+  $env:NODE_ENV="production"
+  pnpm --filter @workspace/api-server run build
+  node artifacts/api-server/dist/index.mjs
+
+TERMINAL 3 — MACHINE AGENT
+
+  cd C:\path\to\project\machine-agent
+  java -jar .\target\dmhc-machine-agent.jar
+
+Machine Agent URL:
+
+  http://127.0.0.1:18888/api/v1
+
+If the JAR does not exist yet, build it first:
+
+  cd C:\path\to\project\machine-agent
+  .\scripts\build-agent.ps1
+
+The frontend and API processes can be built once and then started from their
+generated outputs, but the exact full-application local proxy is not included.
+
+
+18. TROUBLESHOOTING
+===================
+
+Frontend cannot reach Machine Agent
+-----------------------------------
+Actual causes to check:
+- Agent JAR is not running.
+- Agent is on a non-default port but the UI URL was not updated.
+- UI URL does not end exactly in /api/v1.
+- Browser token is empty or belongs to a previous Agent invocation.
+- Browser Origin is not allowed by AgentConfig.
+- A local firewall or browser policy blocks loopback HTTP.
+
+Test the token-free health endpoint:
+
+  curl.exe http://127.0.0.1:18888/api/v1/health
+
+CORS error
+----------
+The Machine Agent owns its CORS rules. The Express API's cors() setting does
+not affect the Agent.
+
+For local UI use, serve the frontend at localhost and keep the Agent bound to
+127.0.0.1. If using another hostname, set DMHC_ALLOWED_ORIGIN_SUFFIXES to the
+needed host suffix and restart the Agent. The Agent never allows a public bind
+host.
+
+Agent token error / HTTP 401
+----------------------------
+Health is intentionally token-free, but serial, profiles, status, settings,
+and control endpoints require:
+
+  Authorization: Bearer <agent-token>
+
+Copy the current token printed by the running Agent into Machine Controller
+and click Save & check. Do not use a token from an earlier Agent process if the
+token was generated automatically.
+
+Connection refused on port 18888
+--------------------------------
+The Java Agent is not listening on that port, or another port was selected.
+Check the Agent console and run:
+
+  curl.exe http://127.0.0.1:18888/api/v1/health
+
+Connection refused on port 8080
+--------------------------------
+The Express API is not running, PORT differs, or the build did not complete.
+Run:
+
+  curl.exe http://localhost:8080/api/healthz
+
+Port already in use
+-------------------
+Vite uses strictPort and exits instead of silently selecting a different port.
+Set another PORT before starting the frontend. Express also requires a free
+PORT. The Agent accepts --port between 1024 and 65535.
+
+Machine Agent running but frontend shows disconnected
+-----------------------------------------------------
+The UI checks the Agent health URL from the browser. Check:
+- exact Agent URL;
+- localhost/127.0.0.1 hostname;
+- HTTP scheme;
+- CORS Origin result;
+- browser console;
+- token for subsequent protected requests.
+
+SSE connection failures
+-----------------------
+The UI uses:
+
+  GET /api/v1/events?token=<agent-token>
+
+EventSource cannot send the Authorization header. Verify the token query
+parameter is accepted, the Agent CORS response allows the frontend origin, and
+the Agent is still running. The UI logs "Live event stream disconnected;
+reconnecting..." and the browser EventSource attempts reconnection.
+
+API 404 errors
+--------------
+These are commonly caused by using the wrong server or path:
+- Express health: /api/healthz
+- Express jobs: /api/jobs...
+- Agent health: /api/v1/health
+- Agent controller API: /api/v1/heads/...
+
+The Express root / may return 404 because no root route is defined.
+
+If the frontend job pages request http://localhost:25308/api/... while the API
+is listening at http://localhost:8080/api/..., this is the current missing
+proxy/same-origin configuration, not an Agent failure.
+
+Environment variable problems
+-----------------------------
+Vite fails at config evaluation if PORT or BASE_PATH is missing.
+Express fails at startup if PORT is missing.
+The Agent does not require an environment file; it reads optional Agent
+variables and command-line arguments.
+lib/db fails if imported without DATABASE_URL, but current API job routes do
+not use it.
+
+Missing npm packages
+--------------------
+Run from the project root:
+
+  pnpm install
+
+Do not use npm install or yarn install because the root preinstall guard
+requires pnpm.
+
+Wrong Node.js version
+---------------------
+The project configuration selects Node.js 24 but package.json does not declare
+an engines constraint. Use Node.js 24 first. If another version is used,
+verify pnpm install, Vite build, and API build independently.
+
+Python compiler does not start
+------------------------------
+The API server invokes exactly:
+
+  python3 -m dmhc_em.main
+
+If Windows cannot resolve python3, the processing request fails even when
+Node.js and the API server itself are running. The repository has no fallback
+to python and no Windows Python launcher configuration.
+
+UGS/Maven build fails
+--------------------
+The first Machine Agent build needs Java, Maven, Git, the pinned UGS source,
+and Maven dependencies. The build scripts run git fetch and Maven installation.
+If a compatible target/dmhc-machine-agent.jar already exists, runtime can use
+that JAR without repeating the build, but its Java/OS compatibility must be
+verified.
+
+Head cannot connect
+------------------
+Check:
+- the actual serial port is present in the Agent's /serial-ports response;
+- no other program owns it;
+- the selected baud rate is valid;
+- the USB/serial driver is installed;
+- the other head has not already claimed that port.
+
+Do not infer that a connected serial port means motors, limit switches, or
+homing are safe. The repository did not test those physical components.
+
+Generated Gap Fill handling
+---------------------------
+The current Machine Agent has only Head 1 and Head 2 controller sessions.
+Gap Fill is not assigned to a controller. Do not send Gap Fill automatically.
+
+
+19. FINAL LOCAL ARCHITECTURE
+============================
+
+The currently supported direct local controller path is:
+
+  Browser
+      |
+      | HTTP + SSE
+      v
+  Local DMHC Frontend
+      |
+      | REST:
+      | http://127.0.0.1:18888/api/v1
+      | SSE:
+      | http://127.0.0.1:18888/api/v1/events?token=...
+      v
+  DMHC Local Machine Agent :18888
+      |
+      | UGS Core 2.0-SNAPSHOT
+      | JSerialComm serial discovery
+      v
+  COM4 / COM5 / another detected serial device
+      |
+      | USB/serial
+      v
+  Arduino/GRBL Controller
+      |
+      v
+  CNC Head 1 or CNC Head 2
+
+The separate current G-code processing path is:
+
+  Browser
+      |
+      | same-origin /api requests
+      v
+  Frontend
+      |
+      | requires local same-origin proxy for a separate port
+      v
+  Express API Server :8080
+      |
+      | python3 -m dmhc_em.main
+      v
+  Python DMHC-EM Compiler
+      |
+      v
+  head1.gcode / head2.gcode / gapfill.gcode / report.json
+
+The complete intended offline arrangement therefore needs both branches, plus
+a local same-origin routing solution for the Express API:
+
+  Browser
+      |
+      v
+  Local frontend HTTP server
+      |\
+      | \
+      |  \-- /api (same-origin proxy) --> Express API :8080
+      |                                      |
+      |                                      `--> Python DMHC-EM
+      |
+      `---- direct localhost REST/SSE ----> Machine Agent :18888
+                                               |
+                                               `--> UGS Core
+                                                     |
+                                                     `--> USB/serial
+                                                           |
+                                                           `--> Arduino/GRBL
+
+No component in the current source automatically connects the generated
+processing output to a selected physical head. The operator must select and
+control the intended Head explicitly.

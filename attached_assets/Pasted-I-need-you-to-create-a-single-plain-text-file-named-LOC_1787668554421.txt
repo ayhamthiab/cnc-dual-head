@@ -1,0 +1,358 @@
+I need you to create a single plain-text file named LOCAL_DEPLOYMENT_GUIDE.txt at the root of this project.
+
+DO NOT modify, refactor, delete, or add any application code.
+DO NOT change the frontend or backend.
+Your only task is to inspect the entire project and document exactly how the frontend and backend are structured and how I can run the complete application locally on a Windows PC and eventually on a Raspberry Pi.
+
+The goal is to run the complete CNC control system locally and offline, without depending on Replit, cloud services, or an internet connection during normal machine operation.
+
+The backend Machine Agent is already a standalone Java application and is currently run locally with:
+
+java -jar .\target\dmhc-machine-agent.jar
+
+It exposes the local API on:
+
+http://127.0.0.1:18888/api/v1
+
+The frontend must communicate with this local Machine Agent.
+
+Inspect the actual source code and configuration files. Do NOT guess anything.
+
+The LOCAL_DEPLOYMENT_GUIDE.txt file must contain the following sections:
+
+1. PROJECT OVERVIEW
+- Explain the complete architecture.
+- Explain how the frontend communicates with the backend.
+- Explain how the frontend communicates with the local Machine Agent.
+- Identify whether there is a separate application backend/server in addition to the Machine Agent.
+- Clearly distinguish:
+  - Frontend
+  - Replit backend/server, if any
+  - Machine Agent
+  - UGS Core
+  - Arduino/GRBL
+  - Any database or external service.
+
+2. COMPLETE FILE TREE
+Generate a relevant complete file/folder tree of the project.
+For every important folder and file, explain:
+- What it does.
+- Whether it is required for local deployment.
+- Whether it is frontend, backend, configuration, build-related, or development-only.
+
+Do not omit important configuration files.
+
+3. FRONTEND TECHNOLOGY
+Identify exactly:
+- Framework
+- Language
+- Build tool
+- Package manager
+- Node.js version requirements
+- npm/yarn/pnpm requirements
+- UI libraries
+- CSS framework
+- Fonts
+- Icons
+- Any frontend runtime dependencies.
+
+4. FRONTEND STARTUP
+Give the exact commands required to install dependencies and run the frontend locally on Windows.
+
+For example, determine whether it requires commands such as:
+npm install
+npm run dev
+npm run build
+npm run preview
+
+Do not use examples unless they are actually applicable to this project.
+
+State:
+- Default frontend port.
+- Exact local URL.
+- Whether the frontend requires environment variables.
+- Which files define the port.
+- How to change the port if necessary.
+
+5. PRODUCTION FRONTEND
+Explain exactly how to create a production build.
+
+State:
+- Exact build command.
+- Where the generated files are located.
+- How those generated files are served locally.
+- Whether a separate web server is required.
+- Whether the frontend can be served by the existing backend.
+- Whether a simple static server can be used.
+- Whether the frontend can run completely offline after dependencies/assets are installed.
+
+6. ENVIRONMENT VARIABLES
+Inspect every .env, .env.example, configuration file, and source-code reference to environment variables.
+
+Create a table:
+
+VARIABLE | REQUIRED? | PURPOSE | EXAMPLE VALUE | USED BY
+
+Clearly identify:
+- API URLs
+- Machine Agent URL
+- Authentication/token configuration
+- Replit-specific variables
+- Cloud/API variables
+- Database variables
+- Any variables that are unnecessary for local offline machine operation.
+
+Do not expose real secrets or API keys.
+If secrets exist, write [SECRET] instead.
+
+7. API COMMUNICATION
+Inspect the frontend source code and document every API endpoint the frontend calls.
+
+For each one provide:
+
+METHOD
+PATH
+PURPOSE
+REQUEST BODY
+REQUIRED HEADERS
+RESPONSE USED BY FRONTEND
+
+Pay special attention to the local Machine Agent API:
+
+http://127.0.0.1:18888/api/v1
+
+Identify exactly how the frontend determines the Machine Agent URL.
+
+Also identify whether the frontend currently assumes the API is hosted remotely on Replit.
+
+8. MACHINE AGENT INTEGRATION
+Explain exactly what must happen for the frontend to communicate with:
+
+http://127.0.0.1:18888/api/v1
+
+Document:
+- Agent URL configuration.
+- Agent token handling.
+- Authorization header format.
+- SSE/EventSource usage.
+- CORS requirements, if any.
+- Browser security restrictions.
+- Whether localhost access from the frontend works directly.
+- Any changes required to make the frontend work when completely offline.
+
+9. CORS / LOCALHOST
+This is very important.
+
+Inspect the actual backend and frontend implementation and determine whether a frontend running on:
+
+http://localhost:<frontend-port>
+
+can communicate with:
+
+http://127.0.0.1:18888
+
+If CORS is required, identify exactly where it is configured and what needs to be allowed.
+
+Do not make assumptions.
+
+10. REPLIT DEPENDENCIES
+Identify every part of the project that currently depends on Replit.
+
+For each dependency explain:
+- What it is.
+- Why it is used.
+- Whether it is required for local operation.
+- Whether it can be replaced or bypassed.
+- What would break if Replit is unavailable.
+
+The final goal is:
+
+Frontend
+    ↓
+localhost Machine Agent
+    ↓
+UGS Core
+    ↓
+COM/USB
+    ↓
+Arduino/GRBL
+
+with NO internet connection required for normal machine operation.
+
+11. BACKEND / SERVER LOCAL DEPLOYMENT
+Document every backend/server component other than the Machine Agent.
+
+For each component provide:
+- Technology
+- Location in project
+- Startup command
+- Required port
+- Required environment variables
+- Dependencies
+- Whether it is required for the CNC machine controller.
+
+12. DATABASE
+If a database exists:
+- Identify its technology.
+- Identify schema/migrations.
+- Identify where data is stored.
+- Explain how to run it locally.
+- Explain whether the CNC controller requires it.
+- Explain whether the system can operate without it.
+
+13. OFFLINE OPERATION
+Explain exactly what is required to run the complete CNC control interface with NO INTERNET.
+
+Separate:
+
+REQUIRED AT INSTALLATION TIME
+
+and
+
+REQUIRED DURING NORMAL OFFLINE OPERATION
+
+Include:
+- Node.js
+- Java
+- Maven
+- Python if required
+- Git
+- Browser
+- npm dependencies
+- Machine Agent
+- Arduino drivers
+- Frontend build artifacts
+- Fonts/icons/assets
+- Any external APIs.
+
+14. WINDOWS LOCAL DEPLOYMENT
+Give a complete step-by-step procedure starting from a clean Windows machine.
+
+Example structure:
+
+Step 1 — Install prerequisites
+Step 2 — Clone/copy project
+Step 3 — Install frontend dependencies
+Step 4 — Configure environment
+Step 5 — Build frontend
+Step 6 — Start frontend
+Step 7 — Start Machine Agent
+Step 8 — Connect Arduino
+Step 9 — Configure Agent token
+Step 10 — Verify communication
+Step 11 — Verify Head 1
+Step 12 — Verify Head 2
+
+Use the EXACT commands required by this project.
+
+15. RASPBERRY PI DEPLOYMENT
+Based on the actual project structure, explain what would be required to eventually run this on Raspberry Pi.
+
+Identify:
+- ARM compatibility.
+- Java requirements.
+- Node.js requirements.
+- Frontend deployment method.
+- Machine Agent compatibility.
+- USB/serial requirements.
+- Any Windows-only dependencies.
+- Any architecture-specific binaries.
+- Any parts that MUST be rebuilt for Linux/ARM.
+
+Do not claim Raspberry Pi compatibility unless the source/configuration supports it.
+
+16. PORTS
+Create a clear table containing:
+
+COMPONENT | DEFAULT PORT | PROTOCOL | PURPOSE
+
+Include:
+- Frontend
+- Backend
+- Machine Agent
+- SSE
+- Any other local services.
+
+17. EXACT STARTUP COMMANDS
+At the end provide a section called:
+
+QUICK START — WINDOWS
+
+with only the exact commands needed to start everything locally.
+
+Separate commands by terminal:
+
+TERMINAL 1 — FRONTEND
+TERMINAL 2 — BACKEND (if required)
+TERMINAL 3 — MACHINE AGENT
+
+18. TROUBLESHOOTING
+Include common errors and their actual causes, especially:
+- Frontend cannot reach Machine Agent.
+- CORS errors.
+- Agent token errors.
+- Connection refused.
+- Port already in use.
+- Machine Agent running but frontend shows disconnected.
+- SSE connection failures.
+- API 404 errors.
+- Environment variable problems.
+- Missing npm packages.
+- Wrong Node.js version.
+
+19. FINAL LOCAL ARCHITECTURE
+Finish with a simple ASCII architecture diagram showing the final intended offline setup.
+
+For example:
+
+Browser
+  |
+  | HTTP / SSE
+  v
+Local Frontend
+  |
+  | REST API + SSE
+  v
+Machine Agent :18888
+  |
+  | UGS Core / JSerialComm
+  v
+COM4 / COMx
+  |
+  v
+TCP↔Serial bridge / Arduino
+  |
+  v
+GRBL Controller
+  |
+  v
+CNC Head
+
+Only include components that actually exist in this project.
+
+IMPORTANT RULES:
+
+- Inspect the actual source code before writing the document.
+- Do not guess.
+- Do not invent commands.
+- Do not invent ports.
+- Do not invent environment variables.
+- Do not assume the frontend framework.
+- Do not assume Vite/React/Next.js/etc.
+- Use the actual package.json, configuration files, source code, and API calls.
+- If something is unclear, explicitly write "UNKNOWN — requires verification" and explain where you found the uncertainty.
+- Include exact file paths.
+- Include exact commands.
+- Include exact URLs.
+- Do not expose real secrets, API keys, passwords, or tokens.
+- Do not modify any project files except creating LOCAL_DEPLOYMENT_GUIDE.txt.
+
+After creating the file, print a short summary in the terminal/chat containing:
+1. Frontend framework
+2. Frontend startup command
+3. Frontend port
+4. Backend startup command
+5. Machine Agent URL
+6. Whether the frontend can currently run completely offline
+7. Any blockers preventing offline operation
+8. The path of the generated LOCAL_DEPLOYMENT_GUIDE.txt

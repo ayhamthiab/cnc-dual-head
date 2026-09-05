@@ -1,0 +1,89 @@
+Boundary: seg 13 Y=[220.000,320.000] out of machine range [0,300.0]
+
+Boundary: seg 14 Y=[320.000,320.000] out of machine range [0,300.0]
+
+Boundary: seg 15 Y=[220.000,320.000] out of machine range [0,300.0]
+
+Boundary: seg 27 Y=[380.000,380.000] out of machine range [0,300.0]
+
+Boundary: seg 28 Y=[380.000,380.000] out of machine range [0,300.0]
+
+Boundary: seg 29 Y=[380.000,420.000] out of machine range [0,300.0]
+
+Boundary: seg 33 X=[950.000,950.000] out of machine range [0,300.0]
+
+Boundary: seg 34 X=[880.000,950.000] out of machine range [0,300.0]
+
+Boundary: seg 35 X=[880.000,880.000] out of machine range [0,300.0]
+
+Boundary: seg 36 X=[880.000,950.000] out of machine range [0,300.0]
+
+Boundary: seg 37 X=[950.000,950.000] out of machine range [0,300.0]
+
+Boundary: seg 40 X=[800.000,800.000] out of machine range [0,300.0]
+
+Boundary: seg 43 X=[920.000,920.000] out of machine range [0,300.0]
+
+Boundary: seg 44 X=[850.000,920.000] out of machine range [0,300.0]
+
+Boundary: seg 44 Y=[220.000,320.000] out of machine range [0,300.0]
+
+Boundary: seg 45 X=[850.000,990.000] out of machine range [0,300.0]
+
+Boundary: seg 45 Y=[320.000,320.000] out of machine range [0,300.0]
+
+Boundary: seg 46 X=[920.000,990.000] out of machine range [0,300.0]
+
+Boundary: seg 46 Y=[220.000,320.000] out of machine range [0,300.0]
+
+Boundary: seg 49 X=[700.000,700.000] out of machine range [0,300.0]
+
+Boundary: seg 50 X=[665.000,700.000] out of machine range [0,300.0]
+
+Boundary: seg 51 X=[630.000,665.000] out of machine range [0,300.0]
+
+Boundary: seg 52 X=[630.000,630.000] out of machine range [0,300.0]
+
+Boundary: seg 52 Y=[250.000,310.000] out of machine range [0,300.0]
+
+Boundary: seg 53 X=[630.000,665.000] out of machine range [0,300.0]
+
+Boundary: seg 53 Y=[310.000,330.000] out of machine range [0,300.0]
+
+Boundary: seg 54 X=[665.000,700.000] out of machine range [0,300.0]
+
+Boundary: seg 54 Y=[310.000,330.000] out of machine range [0,300.0]
+
+Boundary: seg 55 X=[700.000,700.000] out of machine range [0,300.0]
+
+Boundary: seg 55 Y=[250.000,310.000] out of machine range [0,300.0]
+
+Boundary: seg 58 X=[820.000,820.000] out of machine range [0,300.0]
+
+Boundary: seg 58 Y=[380.000,380.000] out of machine range [0,300.0]
+
+Boundary: seg 59 X=[820.000,880.000] out of machine range [0,300.0]
+
+Boundary: seg 59 Y=[380.000,380.000] out of machine range [0,300.0]
+
+Boundary: seg 60 X=[820.000,880.000] out of machine range [0,300.0]
+
+Boundary: seg 60 Y=[380.000,420.000] out of machine range [0,300.0]
+
+Boundary: seg 19 X=[300.000,335.000] out of machine range [0,300.0]
+
+Boundary: seg 20 X=[335.000,370.000] out of machine range [0,300.0]
+
+Boundary: seg 21 X=[370.000,370.000] out of machine range [0,300.0]
+
+Boundary: seg 21 Y=[250.000,310.000] out of machine range [0,300.0]
+
+Boundary: seg 22 X=[335.000,370.000] out of machine range [0,300.0]
+
+Boundary: seg 22 Y=[310.000,330.000] out of machine range [0,300.0]
+
+Boundary: seg 23 X=[300.000,335.000] out of machine range [0,300.0]
+
+Boundary: seg 23 Y=[310.000,330.000] out of machine range [0,300.0]
+
+Boundary: seg 24 Y=[250.000,310.000] out of machine range [0,300.0]

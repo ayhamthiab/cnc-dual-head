@@ -1,0 +1,1237 @@
+UILD THE NEXT VERSION OF THE CNC MACHINE CONTROLLER
+CRITICAL — THIS IS AN EVOLUTION OF THE EXISTING APPLICATION
+
+I already have an existing CNC application running in this Replit project.
+
+The existing application currently contains functionality such as:
+
+G-code splitting
+Head 1 G-code generation
+Head 2 G-code generation
+Gap Fill generation
+Existing G-code processing
+Existing frontend
+Existing backend/API
+
+DO NOT BREAK, REMOVE, REFACTOR, OR REWRITE ANY OF THIS EXISTING FUNCTIONALITY.
+
+The new work must be implemented as an additional CNC Machine Controller module/page inside the existing application.
+
+The existing G-code splitter must continue working exactly as it does now.
+
+Do not replace its existing UI.
+
+Do not change its G-code processing logic unless explicitly required for a future integration.
+
+Do not remove existing pages.
+
+Do not change existing APIs unnecessarily.
+
+The new CNC Controller should coexist with the existing application.
+
+1. MAIN OBJECTIVE
+
+Transform the application into a complete CNC Machine Control Center.
+
+The application should eventually provide the operational capabilities that I normally need from UGS, while also providing additional functionality specifically designed for my dual-head CNC machine.
+
+The application should NOT attempt to reproduce UGS's CAD/design functionality.
+
+I do NOT need tools for designing geometry inside the application.
+
+I need a powerful machine-control interface.
+
+The application should feel like:
+
+UGS
++
+Machine Setup Wizard
++
+Dual-Head CNC Control
++
+Machine Profiles
++
+G-code Management
++
+Advanced DRO
++
+Flexible Operator Dashboard
+2. IMPORTANT ARCHITECTURE
+
+The browser frontend runs on Replit/cloud.
+
+The physical Arduino/GRBL controllers are connected to my Windows computer.
+
+Therefore:
+
+                    Replit
+                      │
+                 Web Frontend
+                      │
+              Browser on my PC
+                      │
+            localhost HTTP / SSE
+                      │
+                      ▼
+            Local Machine Agent
+                 running locally
+                      │
+                    UGS Core
+                      │
+              ┌───────┴───────┐
+              │               │
+           Head 1           Head 2
+              │               │
+           Serial            Serial
+              │               │
+          Arduino #1      Arduino #2
+              │               │
+             GRBL            GRBL
+
+The Local Machine Agent must be responsible for physical machine communication.
+
+The cloud/Replit backend must NEVER attempt to directly access:
+
+COM3
+COM4
+COM5
+/dev/ttyUSB0
+/dev/ttyACM0
+
+The browser communicates with:
+
+http://127.0.0.1:<agent-port>
+
+The local agent communicates with UGS Core.
+
+3. UGS CORE
+
+Use the actual UGS Core implementation.
+
+Do NOT rewrite the GRBL communication stack from scratch.
+
+Do NOT fake UGS APIs.
+
+Do NOT create fake UGS classes.
+
+Inspect the actual UGS source/API used by the current project.
+
+Use UGS Core wherever possible for:
+
+GRBL communication
+Serial communication
+Controller initialization
+GRBL capabilities
+Status
+Position
+Settings
+Streaming
+Jogging
+Homing
+Console communication
+Controller commands
+GRBL-specific functionality
+
+Document:
+
+UGS version
+UGS commit
+Java version
+Build system
+UGS modules used
+4. TWO INDEPENDENT CNC HEADS
+
+The application must support two completely independent GRBL controllers.
+
+HEAD 1
+ ├── Serial Port
+ ├── UGS Controller
+ ├── Machine Position
+ ├── Work Position
+ ├── State
+ ├── Alarm
+ ├── Console
+ ├── Jog
+ ├── Settings
+ └── G-code
+
+HEAD 2
+ ├── Serial Port
+ ├── UGS Controller
+ ├── Machine Position
+ ├── Work Position
+ ├── State
+ ├── Alarm
+ ├── Console
+ ├── Jog
+ ├── Settings
+ └── G-code
+
+The same physical serial port must never be assigned to both heads simultaneously.
+
+5. MAIN UI DESIGN
+
+Create a professional industrial CNC interface.
+
+The UI/UX is extremely important.
+
+The interface must be:
+
+Very easy to understand
+Fast
+Responsive
+Flexible
+Professional
+Industrial-looking
+Clear under stressful machine-operation conditions
+Suitable for desktop screens
+Suitable for touch screens
+Easy to operate with minimal clicks
+Clearly separated by Head 1 / Head 2
+Designed around machine operation rather than software complexity
+
+Do NOT copy the old frontend.
+
+Do NOT create a generic dashboard.
+
+Design a proper CNC control interface.
+
+6. MAIN DASHBOARD
+
+The main dashboard should provide an overview of both machines.
+
+Example:
+
+========================================================
+                CNC MACHINE CONTROLLER
+========================================================
+
+ HEAD 1                              HEAD 2
+ ───────────────────                 ───────────────────
+
+ ● CONNECTED                         ● CONNECTED
+
+ Machine State: IDLE                 Machine State: RUN
+
+ MACHINE POSITION                    MACHINE POSITION
+
+ X     120.000                       X      50.000
+ Y     300.000                       Y     700.000
+ Z       0.000                       Z       5.000
+
+ WORK POSITION                       WORK POSITION
+
+ X       0.000                       X       0.000
+ Y       0.000                       Y       0.000
+ Z       0.000                       Z       0.000
+
+ [JOG] [HOME] [ZERO]                 [JOG] [HOME] [ZERO]
+
+ [CONSOLE]                            [CONSOLE]
+
+ G-code:
+ head1.nc                            head2.nc
+
+ [RUN] [PAUSE] [STOP]                [RUN] [PAUSE] [STOP]
+
+The two heads must never visually blend into one controller.
+
+7. MACHINE SETUP WIZARD
+
+This is one of the most important features.
+
+Create a proper multi-step Machine Setup Wizard.
+
+Example:
+
+Machine Setup Wizard
+
+Step 1
+Controller Connection
+
+Step 2
+Machine Axes
+
+Step 3
+Motor Direction
+
+Step 4
+Steps / mm
+
+Step 5
+Axis Travel
+
+Step 6
+Limit Switches
+
+Step 7
+Homing
+
+Step 8
+Machine Coordinates
+
+Step 9
+Verification
+
+Step 10
+Save Machine Profile
+
+The wizard should guide the operator through machine configuration.
+
+8. STEP 1 — CONTROLLER CONNECTION
+
+Allow:
+
+Serial port selection
+Baud rate
+Controller selection
+GRBL detection
+Firmware detection
+Connection test
+Disconnect
+
+Show:
+
+Connection:
+CONNECTED
+
+Firmware:
+GRBL / grblHAL ...
+
+Port:
+COM4
+
+Baud:
+115200
+
+Do not automatically move the machine.
+
+9. STEP 2 — AXIS CONFIGURATION
+
+Configure:
+
+X Axis
+Y Axis
+Z Axis
+
+For each axis display:
+
+Enabled
+Direction
+Steps/mm
+Max Rate
+Acceleration
+Travel
+10. MOTOR DIRECTION SETUP
+
+Create an interactive wizard to determine positive direction.
+
+For example:
+
+X AXIS
+
+Current direction:
+
+[ X+ ]
+
+Press TEST MOVE
+
+Does the machine physically move toward X+?
+
+[ YES ] [ NO ]
+
+If NO:
+
+Reverse X direction?
+[ APPLY ]
+
+Repeat for:
+
+X+
+Y+
+Z+
+
+The UI should clearly explain that this step involves physical movement.
+
+Require explicit operator confirmation before movement.
+
+Never perform these movements automatically.
+
+11. STEPS / MM CALIBRATION
+
+Create a dedicated Steps/mm setup tool.
+
+Example:
+
+X Axis
+
+Current Steps/mm:
+80.000
+
+Commanded Distance:
+100 mm
+
+Actual Measured Distance:
+98.4 mm
+
+[ CALCULATE ]
+
+New Steps/mm:
+81.301
+
+[ APPLY ]
+
+Provide the standard calibration calculation:
+
+New Steps/mm =
+Current Steps/mm × Commanded Distance / Actual Distance
+
+Allow the operator to:
+
+Measure
+Calculate
+Preview new value
+Apply
+Save
+
+Repeat for:
+
+X
+Y
+Z
+12. AXIS TRAVEL CONFIGURATION
+
+Allow configuration of:
+
+X Minimum
+X Maximum
+
+Y Minimum
+Y Maximum
+
+Z Minimum
+Z Maximum
+
+Show the machine working envelope.
+
+The UI should clearly distinguish:
+
+Machine Coordinates
+
+from:
+
+Work Coordinates
+13. LIMIT SWITCH CONFIGURATION
+
+Create a dedicated Limit Switch configuration screen.
+
+For each axis:
+
+X+
+
+Limit switch:
+[ Enabled ]
+
+X-
+
+Limit switch:
+[ Enabled ]
+
+Same for:
+
+Y+
+Y-
+
+Z+
+Z-
+
+Allow:
+
+Enable/disable limits
+Hard limits
+Soft limits
+Limit inversion/configuration where supported
+Test individual switches
+Display current limit state
+Detect triggered limits
+
+Visualize them:
+
+             Y+
+             │
+             │
+       X- ───┼─── X+
+             │
+             │
+             Y-
+
+             Z+
+             ↑
+             Z-
+
+Make it obvious which physical switch corresponds to each machine direction.
+
+14. HOMING CONFIGURATION
+
+Create a Homing configuration screen.
+
+Allow configuration where supported:
+
+Homing enabled
+Homing direction
+Homing cycle
+Homing pull-off
+Homing seek rate
+Homing feed rate
+Axis order/cycle
+
+Provide a controlled:
+
+[ HOME MACHINE ]
+
+button.
+
+Require explicit confirmation.
+
+Never home automatically.
+
+15. JOG CONTROL
+
+Create a powerful Jog panel.
+
+For each head:
+
+                 Y+
+
+                 ▲
+
+           X- ◀  ●  ▶ X+
+
+                 ▼
+
+                 Y-
+
+          Z+ [UP]
+          Z- [DOWN]
+
+Controls:
+
+Step:
+[ 0.1 ] [ 1 ] [ 10 ] [ 100 ]
+
+Feed:
+[ 100 ]
+[ 500 ]
+[ 1000 ]
+[ CUSTOM ]
+
+Support:
+
+X+
+X-
+Y+
+Y-
+Z+
+Z-
+Incremental jog
+Continuous jog where supported
+Jog cancellation
+Feed rate
+
+Every movement command must have proper safety handling.
+
+16. CURRENT POSITION / WORK ZERO
+
+This is extremely important.
+
+The UI must distinguish between:
+
+Machine Position
+
+and:
+
+Work Position
+
+The operator must be able to define the current physical location as a new work coordinate without physically moving the machine.
+
+Example:
+
+Machine physically moved to:
+
+X = 10 mm
+
+Operator wants this point to become:
+
+Work X = 0
+
+Provide:
+
+Set X Work Zero
+Set Y Work Zero
+Set Z Work Zero
+Set All Work Zero
+
+Also provide an advanced manual coordinate-offset interface.
+
+Example:
+
+Current Machine Position
+
+X: 10.000
+Y: 50.000
+Z: 0.000
+
+New Work Position
+
+X: [0]
+Y: [0]
+Z: [0]
+
+[ APPLY WORK OFFSET ]
+
+IMPORTANT:
+
+Do NOT falsely modify the physical machine position.
+
+Implement this using the appropriate GRBL/UGS coordinate-offset/WCS mechanism.
+
+The UI must explain:
+
+Machine Position = physical machine coordinate
+
+Work Position = user-defined coordinate system
+
+Changing Work Position must NOT move the machine.
+
+17. HEAD 1 CONSOLE
+
+Create a dedicated console for Head 1.
+
+Features:
+
+Send GRBL commands
+Display responses
+Command history
+Clear console
+Auto-scroll
+Timestamp
+Error highlighting
+Status messages
+
+Example:
+
+HEAD 1 CONSOLE
+
+> $$
+
+< $0=10
+< $1=25
+< $100=80
+...
+
+Command:
+[______________________] [SEND]
+18. HEAD 2 CONSOLE
+
+Completely independent console.
+
+HEAD 2 CONSOLE
+
+Never mix messages between Head 1 and Head 2.
+
+19. G-CODE MANAGEMENT
+
+I do NOT need CAD/design tools.
+
+Do NOT build a G-code drawing/design editor.
+
+I need G-code CONTROL.
+
+Provide separate G-code areas:
+
+HEAD 1 G-CODE
+────────────────────────
+
+[ Load File ]
+[ Paste G-code ]
+
+Filename:
+head1.nc
+
+Lines:
+12500
+
+[ Preview ]
+[ RUN ]
+[ PAUSE ]
+[ RESUME ]
+[ STOP ]
+
+and:
+
+HEAD 2 G-CODE
+────────────────────────
+
+[ Load File ]
+[ Paste G-code ]
+
+Filename:
+head2.nc
+
+Lines:
+11300
+
+[ Preview ]
+[ RUN ]
+[ PAUSE ]
+[ RESUME ]
+[ STOP ]
+20. G-CODE PREVIEW
+
+Only provide visualization of an existing G-code file.
+
+Do NOT provide CAD design tools.
+
+Provide:
+
+Toolpath preview
+Zoom
+Pan
+Fit
+Axis display
+Current position
+Bounds
+Progress
+Current line
+21. G-CODE STREAMING
+
+Support:
+
+Run
+Pause
+Resume
+Stop
+Abort
+Progress
+Current line
+Lines sent
+Lines completed
+Lines remaining
+Streaming state
+Errors
+
+Each head must stream independently.
+
+Never accidentally stream Head 1 G-code to Head 2.
+
+22. MACHINE CONTROL BUTTONS
+
+Provide clear controls:
+
+[ CONNECT ]
+[ DISCONNECT ]
+
+[ HOME ]
+
+[ UNLOCK ]
+
+[ RESET ]
+
+[ JOG ]
+
+[ SET ZERO ]
+
+[ CONSOLE ]
+
+[ RUN ]
+
+[ PAUSE ]
+
+[ RESUME ]
+
+[ STOP ]
+
+Use color, icons, placement, and confirmation dialogs appropriately for dangerous actions.
+
+Do not make dangerous buttons visually ambiguous.
+
+23. GRBL SETTINGS
+
+Provide a readable settings interface instead of forcing the operator to use the console.
+
+Example:
+
+GRBL SETTINGS
+
+$100   X Steps/mm       80.000
+$101   Y Steps/mm       80.000
+$102   Z Steps/mm       400.000
+
+$110   X Max Rate       2000
+$111   Y Max Rate       2000
+$112   Z Max Rate       2000
+
+$120   X Acceleration   10
+$121   Y Acceleration   10
+$122   Z Acceleration   10
+
+Allow:
+
+Read
+Edit
+Validate
+Apply
+Refresh
+
+Use UGS Core/GRBL capabilities where available.
+
+24. COORDINATE SYSTEMS
+
+Support the appropriate GRBL coordinate systems:
+
+G54
+G55
+G56
+G57
+G58
+G59
+
+Display:
+
+Active WCS
+Offsets
+Current work coordinates
+Machine coordinates
+
+Allow setting work zero safely.
+
+25. STATUS AND TELEMETRY
+
+Real-time status should include:
+
+Connection
+Controller state
+Machine state
+Machine position
+Work position
+Feed rate
+Spindle speed
+Firmware
+Alarm
+Error
+Limit state
+Homing state
+Streaming state
+
+Use realtime updates through SSE/WebSocket where appropriate.
+
+26. MACHINE PROFILE
+
+Allow saving complete machine configuration.
+
+Example:
+
+Machine Profile
+
+Name:
+My CNC Head 1
+
+Controller:
+GRBL
+
+Serial:
+COM4
+
+Baud:
+115200
+
+X Steps/mm:
+...
+
+Y Steps/mm:
+...
+
+Z Steps/mm:
+...
+
+Travel:
+...
+
+Limits:
+...
+
+Homing:
+...
+
+Direction:
+...
+
+Profiles must never automatically move the machine.
+
+27. DUAL-HEAD MANAGEMENT
+
+The application must make the two heads extremely easy to manage.
+
+Provide:
+
+HEAD 1
+HEAD 2
+
+tabs or panels.
+
+Each has independent:
+
+Connection
+Console
+Jog
+DRO
+Settings
+Machine profile
+G-code
+Streaming
+Alarm
+Homing
+28. FUTURE G-CODE SPLITTER INTEGRATION
+
+The existing splitter already produces:
+
+Head 1 G-code
+Head 2 G-code
+Gap Fill
+
+Do not break this functionality.
+
+Eventually the new controller should be able to receive these files.
+
+Design the architecture so that future integration can do:
+
+Existing G-code Splitter
+        │
+        ├── Head 1 G-code
+        ├── Head 2 G-code
+        └── Gap Fill
+                │
+                ▼
+        CNC Machine Controller
+                │
+        ┌───────┴───────┐
+        ▼               ▼
+     Head 1          Head 2
+
+Gap Fill must remain explicitly assignable.
+
+Never automatically decide which head should run Gap Fill.
+
+29. SAFETY
+
+Safety is extremely important.
+
+The application must:
+
+Never move on startup
+Never home automatically
+Never jog automatically
+Never stream automatically
+Never send G-code automatically
+Never execute a command because of page loading
+Require explicit confirmation for dangerous operations
+Clearly show which head is selected
+Clearly show which machine is physically connected
+Prevent accidental cross-head commands
+
+For dangerous operations use confirmations such as:
+
+Are you sure you want to HOME HEAD 1?
+
+[ CANCEL ] [ CONFIRM HOME ]
+30. UI/UX REQUIREMENTS
+
+The UI/UX should be extremely strong.
+
+Prioritize:
+
+Clarity
+
+The operator should instantly know:
+
+Which head?
+Which COM?
+Connected?
+Machine state?
+Machine coordinates?
+Work coordinates?
+What G-code is loaded?
+Is the machine moving?
+Flexibility
+
+Allow:
+
+Resizable panels
+Collapsible panels
+Head-specific layouts
+Compact mode
+Full-screen mode
+Touch-friendly controls
+Keyboard shortcuts where safe
+Configurable dashboard layout
+Responsiveness
+
+The UI must remain responsive while:
+
+Streaming
+Receiving telemetry
+Receiving console messages
+Updating DRO
+Running two controllers simultaneously
+Error visibility
+
+Never hide:
+
+Alarm
+Serial disconnect
+GRBL error
+Streaming error
+Limit switch
+Controller failure
+31. KEYBOARD SHORTCUTS
+
+Where safe, support configurable shortcuts.
+
+Examples:
+
+Arrow keys → Jog
+Page Up / Page Down → Z
+Space → Feed Hold
+
+But:
+
+Keyboard shortcuts must never accidentally move a machine without the correct safety state.
+
+Make shortcuts configurable and disable them when focus is inside text fields/console.
+
+32. LOCAL AGENT API
+
+Maintain the existing Local Machine Agent architecture.
+
+Provide APIs for:
+
+ports
+controllers
+connect
+disconnect
+status
+events
+settings
+profiles
+home
+jog
+reset
+unlock
+console
+stream
+pause
+resume
+stop
+work offsets
+machine configuration
+
+Use clean REST endpoints and realtime events.
+
+Do not expose the Agent publicly.
+
+Bind to:
+
+127.0.0.1
+
+by default.
+
+33. DEVELOPMENT STRATEGY
+
+Do NOT implement everything at once.
+
+Work incrementally:
+
+Phase 1
+Connection + Status + DRO
+
+↓
+Test
+
+Phase 2
+Console + GRBL Settings
+
+↓
+Test
+
+Phase 3
+Machine Setup Wizard
+
+↓
+Test
+
+Phase 4
+Jog + Zero + Coordinate systems
+
+↓
+Test
+
+Phase 5
+G-code management + Preview
+
+↓
+Test
+
+Phase 6
+Streaming
+
+↓
+Test
+
+Phase 7
+Dual-head workflow
+
+↓
+Test
+
+Phase 8
+Integration with existing splitter
+
+After every phase:
+
+Build
+Test
+Verify
+Document
+34. DO NOT IMPLEMENT CAD FEATURES
+
+Do NOT spend development time on:
+
+CAD
+Drawing tools
+Geometry creation
+Shape design
+Vector drawing
+CAM generation
+
+The application consumes G-code.
+
+It is a Machine Controller, not a CAD/CAM application.
+
+35. HARDWARE TESTING
+
+Initially test using:
+
+grblHAL Simulator
++
+TCP ↔ COM bridge
++
+com0com
++
+Local Machine Agent
++
+UGS Core
++
+Replit Frontend
+
+Then test with:
+
+Real Arduino + GRBL
+
+Do not claim real hardware testing until it actually happens.
+
+36. FINAL RESULT
+
+The final application should feel like:
+
+                DMHC CNC CONTROLLER
+
+ ┌──────────────────────────────────────────────┐
+ │                 MACHINE OVERVIEW             │
+ ├──────────────────────┬───────────────────────┤
+ │       HEAD 1          │       HEAD 2          │
+ │                       │                       │
+ │ Connection             │ Connection            │
+ │ DRO                    │ DRO                   │
+ │ State                  │ State                 │
+ │ Alarm                  │ Alarm                 │
+ │                       │                       │
+ │ [JOG] [HOME] [ZERO]   │ [JOG] [HOME] [ZERO] │
+ │ [CONSOLE] [SETTINGS]  │ [CONSOLE] [SETTINGS]│
+ │                       │                       │
+ │ G-code                │ G-code                │
+ │ [RUN] [PAUSE] [STOP] │ [RUN] [PAUSE] [STOP]│
+ └──────────────────────┴───────────────────────┘
+
+              MACHINE SETUP WIZARD
+
+ Connection
+     ↓
+ Axis Direction
+     ↓
+ Steps/mm
+     ↓
+ Travel
+     ↓
+ Limit Switches
+     ↓
+ Homing
+     ↓
+ Coordinate System
+     ↓
+ Verification
+     ↓
+ Save Machine Profile
+37. MOST IMPORTANT REQUIREMENT
+
+Before implementing a feature, determine whether UGS Core already provides the underlying functionality.
+
+If it does:
+
+USE UGS CORE.
+
+Do not duplicate its implementation.
+
+If UGS Core provides only the low-level functionality, build our own UI/business layer around it.
+
+The goal is:
+
+UGS Core
+    ↓
+Local Machine Agent
+    ↓
+DMHC CNC Controller UI
+
+not:
+
+DMHC
+    ↓
+completely rewritten GRBL implementation
+38. FINAL REPORT
+
+When finished, report:
+
+Existing files modified
+New files created
+UGS components used
+UGS version/commit
+Local Agent architecture
+Frontend architecture
+API endpoints
+Machine Setup Wizard implementation
+Jog implementation
+Coordinate/Work Zero implementation
+Limit Switch implementation
+Console implementation
+G-code implementation
+Streaming implementation
+Dual-head implementation
+Tests performed
+Simulator tests
+Real hardware tests
+Known limitations
+Remaining UGS functionality
+Future phases
+
+Most importantly:
+
+Do not claim a feature is implemented unless it was actually implemented and tested.

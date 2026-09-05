@@ -1,0 +1,1085 @@
+# Phase 1 — Implement the Local Machine Agent Using UGS Core
+
+## CRITICAL: IMPLEMENTATION PHASE
+
+You have already completed the feasibility analysis for integrating UGS Core into the existing CNC Middleware.
+
+The feasibility conclusion was:
+
+> **YES WITH MODIFICATIONS**
+
+The recommended architecture is:
+
+```text
+Existing React + Node.js + Python Application
+                    │
+                    │
+                    ▼
+          Local Machine Agent
+                Java
+                    │
+                    ▼
+                UGS Core
+                    │
+                    ▼
+              GRBL Controller
+                    │
+                 Serial
+                    │
+                    ▼
+            Arduino + GRBL
+```
+
+The goal of this phase is to implement the **first working version of the Local Machine Agent**.
+
+---
+
+# 1. VERY IMPORTANT — SCOPE OF THIS PHASE
+
+This is **Phase 1 only**.
+
+Implement ONLY:
+
+* Local Machine Agent
+* Java
+* UGS Core integration
+* Serial port discovery
+* Serial connection
+* Disconnect
+* GRBL controller initialization
+* GRBL firmware/version detection if available
+* GRBL status reading
+* Machine position reading
+* Controller state
+* Basic error/alarm reporting
+* Support for two independent GRBL controllers
+* Basic API for the frontend
+* Basic frontend connection/status UI
+
+DO NOT implement yet:
+
+* Homing
+* Jogging
+* G-code streaming
+* Run
+* Pause
+* Resume
+* Abort
+* Gap Fill execution
+* Parallel execution
+* Automatic machine movement
+* Automatic homing
+* Automatic commands
+* Advanced machine-control UI
+
+Those features will be implemented in a later phase.
+
+---
+
+# 2. DO NOT BREAK THE EXISTING PROJECT
+
+The existing application already contains the G-code processing system.
+
+Its current architecture is:
+
+```text
+React
+   ↓
+Node.js / TypeScript API
+   ↓
+Python Geometry Engine
+   ↓
+G-code Processing
+   ↓
+Head 1
+Head 2
+Gap Fill
+```
+
+The existing processing functionality MUST remain unchanged.
+
+Do NOT rewrite:
+
+* Python geometry engine
+* G-code parser
+* Gap detection
+* Partitioning
+* Head 1 generation
+* Head 2 generation
+* Gap Fill generation
+* Verification
+* Axis inversion
+* Existing job processing
+* Existing visualization
+* Existing G-code editing
+
+Do not modify existing functionality unless a modification is absolutely required for the new Machine Agent integration.
+
+If a change is required, explain it before making it.
+
+---
+
+# 3. FIRST: INSPECT THE PROJECT
+
+Before creating files:
+
+1. Inspect the entire existing project structure.
+2. Identify:
+
+   * React frontend
+   * Node.js API server
+   * Python engine
+   * API specification
+   * existing routes
+   * existing services
+   * existing configuration
+   * build system
+   * package manager
+3. Determine where the new Machine Agent should live.
+4. Check whether the repository already contains Java tooling or Gradle/Maven configuration.
+5. Check the current Java version if one is already configured.
+6. Check whether the project is deployed remotely, locally, or both.
+
+Do NOT assume paths.
+
+Use the actual repository structure.
+
+---
+
+# 4. CREATE A NEW LOCAL MACHINE AGENT
+
+Create a new independent component called:
+
+```text
+machine-agent
+```
+
+The purpose of this component is:
+
+```text
+Frontend
+   ↓
+Machine Agent API
+   ↓
+UGS Core
+   ↓
+GRBL
+   ↓
+Serial
+```
+
+The Machine Agent must be designed to run **locally on the computer physically connected to the Arduino**.
+
+This is critical.
+
+A remote Replit/Cloud server cannot directly access:
+
+```text
+COM3
+COM4
+/dev/ttyUSB0
+/dev/ttyACM0
+```
+
+on the user's local computer.
+
+Therefore:
+
+```text
+Cloud/Web Application
+        X
+        │
+        X
+    USB Serial
+```
+
+is NOT acceptable.
+
+The Local Machine Agent must run on the machine that has physical access to the Arduino.
+
+---
+
+# 5. UGS CORE
+
+Use the actual UGS open-source project and reuse its core functionality.
+
+Do NOT launch the complete UGS desktop application.
+
+Do NOT embed the UGS GUI.
+
+Do NOT recreate UGS functionality manually if the corresponding functionality exists in UGS Core.
+
+The expected reusable components include concepts/classes such as:
+
+```text
+IController
+AbstractController
+GrblController
+GrblControllerInitializer
+ICommunicator
+BufferedCommunicator
+GrblCommunicator
+ConnectionFactory
+JSerialCommConnection
+JSerialCommConnectionDevice
+ControllerListener
+StatusPollTimer
+ConnectionWatchTimer
+ControllerStatus
+Position
+PartialPosition
+```
+
+Verify the exact names and package paths against the actual UGS version being integrated.
+
+Do not blindly copy class names from the analysis.
+
+---
+
+# 6. UGS VERSION
+
+Use a clearly identified UGS version/commit.
+
+Do not depend on an arbitrary latest version without documenting it.
+
+Record:
+
+```text
+UGS version:
+Git commit/tag:
+Java version:
+Build system:
+```
+
+The integration must be reproducible.
+
+Prefer a dependency/submodule approach where technically possible instead of copying random UGS source files.
+
+If UGS Core cannot be consumed cleanly as a dependency, investigate the repository's actual Gradle/Maven structure and use the cleanest supported approach.
+
+Do not copy the entire UGS desktop application.
+
+---
+
+# 7. MACHINE AGENT ARCHITECTURE
+
+Create a clean abstraction around UGS.
+
+Recommended architecture:
+
+```text
+machine-agent
+│
+├── api/
+│   ├── MachineHttpServer
+│   └── MachineWebSocketServer (only if needed in Phase 1)
+│
+├── controller/
+│   ├── ControllerRegistry
+│   ├── ControllerSession
+│   └── UgsGrblControllerAdapter
+│
+├── events/
+│   ├── MachineEventPublisher
+│   └── MachineStatusSnapshot
+│
+├── config/
+│   └── AgentConfig
+│
+└── Main
+```
+
+Adjust this structure to the actual project if necessary.
+
+Do not blindly create unnecessary classes.
+
+---
+
+# 8. CONTROLLER REGISTRY
+
+The system must support at least two independent GRBL controllers.
+
+Example:
+
+```text
+Controller 1
+    ↓
+Arduino #1
+    ↓
+Head 1
+
+Controller 2
+    ↓
+Arduino #2
+    ↓
+Head 2
+```
+
+Each controller must have an independent:
+
+* UGS controller instance
+* Serial connection
+* state
+* status
+* position
+* error state
+* connection state
+
+Conceptually:
+
+```text
+head-1
+    └── GrblController
+         └── Serial Port #1
+
+head-2
+    └── GrblController
+         └── Serial Port #2
+```
+
+Do NOT allow both controller sessions to use the same serial port.
+
+---
+
+# 9. SERIAL PORT DISCOVERY
+
+Implement:
+
+```http
+GET /v1/ports
+```
+
+The response should provide enough information for the frontend to display available serial devices.
+
+For example:
+
+```json
+[
+  {
+    "address": "COM3",
+    "description": "USB Serial Device",
+    "manufacturer": "Arduino"
+  }
+]
+```
+
+The exact fields should follow what UGS/JSerialComm actually provides.
+
+Do not fabricate manufacturer information.
+
+---
+
+# 10. CONNECT
+
+Implement:
+
+```http
+POST /v1/controllers/{controllerId}/connect
+```
+
+Example request:
+
+```json
+{
+  "port": "COM3",
+  "baudRate": 115200
+}
+```
+
+The agent should:
+
+1. Validate the controller ID.
+2. Validate the port.
+3. Ensure the port is not already used by another controller.
+4. Create/initialize the UGS GRBL controller.
+5. Open the serial connection.
+6. Detect/receive the GRBL startup information if available.
+7. Start status monitoring using UGS functionality.
+8. Return the connection state.
+
+Example response:
+
+```json
+{
+  "controllerId": "head-1",
+  "connection": "connected"
+}
+```
+
+Do NOT execute:
+
+```text
+$H
+G0 ...
+G1 ...
+```
+
+or any movement command during connection.
+
+---
+
+# 11. DISCONNECT
+
+Implement:
+
+```http
+POST /v1/controllers/{controllerId}/disconnect
+```
+
+It must:
+
+1. Stop status monitoring if necessary.
+2. Close the UGS communication layer cleanly.
+3. Close the serial port.
+4. Update controller state.
+5. Notify the frontend.
+
+Disconnecting must NOT send a movement command.
+
+---
+
+# 12. MACHINE STATUS
+
+Implement:
+
+```http
+GET /v1/controllers/{controllerId}/status
+```
+
+The status should expose information available through UGS Core.
+
+At minimum, investigate whether the following can be provided:
+
+```text
+Connection state
+GRBL machine state
+Machine position
+Work position
+Active command
+Alarm/error
+```
+
+Example conceptual response:
+
+```json
+{
+  "controllerId": "head-1",
+  "connection": "connected",
+  "machineState": "Idle",
+  "machinePosition": {
+    "x": 0,
+    "y": 0,
+    "z": 0
+  },
+  "workPosition": {
+    "x": 0,
+    "y": 0,
+    "z": 0
+  },
+  "alarm": null
+}
+```
+
+Use actual UGS/GRBL information.
+
+Do not invent values.
+
+---
+
+# 13. STATUS EVENTS
+
+If UGS provides controller listeners/events, use them.
+
+The frontend should eventually be able to receive events such as:
+
+```text
+controller.connected
+controller.disconnected
+status.changed
+position.changed
+grbl.error
+grbl.alarm
+```
+
+For Phase 1, use the simplest reliable mechanism.
+
+Possible options:
+
+```text
+WebSocket
+```
+
+or:
+
+```text
+Server-Sent Events
+```
+
+or short polling if that is significantly simpler.
+
+Do not introduce WebSocket complexity unless it is justified.
+
+Explain the choice.
+
+---
+
+# 14. GRBL VERSION / FIRMWARE
+
+After connection, determine whether UGS already exposes firmware/version information.
+
+If it can be retrieved safely without motion:
+
+```text
+Detect firmware/version
+```
+
+Expose it through the status API if possible.
+
+Example:
+
+```json
+{
+  "firmware": {
+    "type": "GRBL",
+    "version": "1.1h"
+  }
+}
+```
+
+Only return values actually received from the controller.
+
+Do not assume the version.
+
+---
+
+# 15. FRONTEND INTEGRATION
+
+Add a minimal Machine Control section to the existing React application.
+
+Do NOT redesign the entire application.
+
+Add only the minimum UI required to test Phase 1.
+
+The UI should provide:
+
+### Controller 1
+
+```text
+Controller 1
+
+[ Serial Port ▼ ]
+[ Baud Rate ▼ ]
+
+[ Connect ] [ Disconnect ]
+
+Status:
+Connected / Disconnected
+
+Machine State:
+Idle / ...
+
+Position:
+X:
+Y:
+Z:
+
+Firmware:
+...
+```
+
+### Controller 2
+
+Same structure.
+
+The UI should make it obvious which physical controller is being controlled.
+
+For example:
+
+```text
+HEAD 1 CONTROLLER
+HEAD 2 CONTROLLER
+```
+
+Do not add:
+
+```text
+Home
+Jog
+Run
+Pause
+Resume
+Stop
+```
+
+yet.
+
+Those belong to later phases.
+
+---
+
+# 16. NODE.JS INTEGRATION
+
+Do not unnecessarily route local Serial communication through the cloud Node.js server.
+
+The preferred architecture for a locally running application is:
+
+```text
+React
+   │
+   ▼
+Local Machine Agent
+   │
+   ▼
+UGS Core
+   │
+   ▼
+Arduino
+```
+
+If the existing application requires Node.js for the UI/API, determine whether:
+
+```text
+React → Node → Local Agent
+```
+
+or:
+
+```text
+React → Local Agent
+Node → Processing
+```
+
+is cleaner.
+
+The critical requirement is:
+
+> The actual Serial communication must happen on the machine that physically has the Arduino.
+
+If the application is currently hosted on Replit, clearly separate:
+
+```text
+Cloud Processing
+```
+
+from:
+
+```text
+Local Machine Control
+```
+
+---
+
+# 17. DO NOT IMPLEMENT MACHINE MOVEMENT
+
+This is extremely important.
+
+During this phase the agent MUST NOT implement:
+
+```text
+$H
+G0
+G1
+G2
+G3
+Jog
+Streaming
+Pause
+Resume
+Abort
+```
+
+except for whatever harmless communication is required to identify the controller/status.
+
+There must be no automatic motion.
+
+There must be no automatic homing.
+
+There must be no automatic G-code execution.
+
+---
+
+# 18. TESTING
+
+Create tests for the Machine Agent.
+
+At minimum:
+
+### Unit tests
+
+Test:
+
+```text
+Controller registry
+Controller ID validation
+Duplicate port prevention
+Connection state transitions
+API request validation
+Status mapping
+```
+
+### Integration test
+
+If hardware is available:
+
+```text
+Connect Arduino + GRBL
+        ↓
+Detect serial port
+        ↓
+Connect
+        ↓
+Receive GRBL startup/status
+        ↓
+Read status
+        ↓
+Read position
+        ↓
+Disconnect
+```
+
+Do NOT move motors.
+
+---
+
+# 19. HARDWARE TEST MODE
+
+If the environment contains no Arduino or no serial device, the application should still start successfully.
+
+The UI should simply show:
+
+```text
+No serial devices detected
+```
+
+It must NOT crash.
+
+Do not create fake connected devices.
+
+A mock/test adapter can be created only if useful for automated tests, but it must be clearly separated from real hardware.
+
+---
+
+# 20. ERROR HANDLING
+
+Handle at least:
+
+```text
+Port does not exist
+Port already in use
+Connection refused
+Serial disconnect
+GRBL startup timeout
+Invalid controller ID
+Invalid baud rate
+UGS initialization failure
+Unexpected GRBL response
+```
+
+Return clean API errors.
+
+Do not expose raw Java stack traces to the frontend.
+
+Log detailed errors locally.
+
+---
+
+# 21. SECURITY
+
+Because this service controls physical hardware, do not expose it publicly.
+
+By default:
+
+```text
+127.0.0.1
+```
+
+should be preferred over:
+
+```text
+0.0.0.0
+```
+
+unless there is a documented reason.
+
+If an API token is required, implement a simple local authentication mechanism.
+
+Do not create an unauthenticated network-accessible machine controller.
+
+---
+
+# 22. EXISTING G-CODE PROCESSING MUST REMAIN SEPARATE
+
+Do not connect the G-code splitting pipeline to machine movement yet.
+
+The existing pipeline:
+
+```text
+G-code
+ ↓
+Processing
+ ↓
+Head 1
+Head 2
+Gap Fill
+```
+
+must continue working exactly as before.
+
+Phase 1 only establishes:
+
+```text
+Machine Agent
+ ↓
+UGS Core
+ ↓
+GRBL
+```
+
+Later we will connect:
+
+```text
+Generated G-code
+       ↓
+Machine Agent
+       ↓
+UGS Core
+       ↓
+GRBL
+```
+
+---
+
+# 23. DOCUMENTATION
+
+Create documentation explaining:
+
+1. How to build the Machine Agent.
+2. How to run it locally.
+3. How to configure its port.
+4. How to select the Java runtime.
+5. How UGS Core is integrated.
+6. Which UGS version/commit is used.
+7. How to connect Arduino + GRBL.
+8. How to test status without moving the machine.
+9. How the frontend communicates with the Agent.
+10. Security considerations.
+
+Include a clear architecture diagram.
+
+---
+
+# 24. LICENSING
+
+The previous investigation identified UGS as GPLv3.
+
+Verify the exact license in the UGS source actually used by the implementation.
+
+Preserve:
+
+* UGS copyright notices
+* License files
+* Required attribution
+* Source/license obligations
+
+Do not remove UGS license information.
+
+If the chosen integration method creates licensing implications for the existing project, document them clearly.
+
+Do not make legal assumptions.
+
+---
+
+# 25. IMPORTANT: DO NOT COPY THE ENTIRE UGS APPLICATION
+
+We want:
+
+```text
+UGS Core
+```
+
+not:
+
+```text
+UGS Desktop Application
+```
+
+Do not integrate:
+
+```text
+UGS GUI
+NetBeans Platform UI
+UGS Desktop windows
+```
+
+unless absolutely required by a dependency, and if that happens, STOP and explain why before proceeding.
+
+The goal is a lightweight local machine-control backend.
+
+---
+
+# 26. ACCEPTANCE CRITERIA
+
+Phase 1 is considered successful only when all of the following are true:
+
+### Software
+
+* [ ] Machine Agent builds successfully.
+* [ ] UGS Core is integrated.
+* [ ] Existing project still builds.
+* [ ] Existing G-code processing still works.
+* [ ] No existing functionality is broken.
+
+### Serial
+
+* [ ] Serial ports can be detected.
+* [ ] Controller 1 can connect.
+* [ ] Controller 2 can connect independently.
+* [ ] The same serial port cannot be assigned to both.
+* [ ] Controllers can disconnect cleanly.
+
+### GRBL
+
+* [ ] GRBL startup/version information can be detected if available.
+* [ ] Machine status can be read.
+* [ ] Position can be read.
+* [ ] Alarm/error information can be displayed.
+
+### Frontend
+
+* [ ] User can select a port.
+* [ ] User can connect/disconnect.
+* [ ] User can see connection status.
+* [ ] User can see GRBL status.
+* [ ] User can see position.
+* [ ] User can distinguish Head 1 from Head 2.
+
+### Safety
+
+* [ ] Connecting does not move the machine.
+* [ ] Opening the application does not move the machine.
+* [ ] No automatic homing occurs.
+* [ ] No G-code is streamed.
+* [ ] No jogging is possible in Phase 1.
+
+---
+
+# 27. DEVELOPMENT RULE
+
+Work incrementally.
+
+After each major step:
+
+```text
+Implement
+↓
+Build
+↓
+Test
+↓
+Verify
+↓
+Continue
+```
+
+Do not make a huge untested change.
+
+If something cannot be implemented exactly as proposed because of the actual UGS API/version/project structure, STOP and explain the issue rather than creating a fake implementation.
+
+---
+
+# 28. FINAL REPORT AFTER IMPLEMENTATION
+
+When Phase 1 is complete, report:
+
+## 1. What was implemented
+
+List every created/modified file.
+
+## 2. UGS integration
+
+Explain exactly which UGS components are being used.
+
+## 3. Architecture
+
+Show the final architecture.
+
+## 4. API
+
+List the implemented endpoints.
+
+## 5. Frontend
+
+Explain what was added.
+
+## 6. Hardware testing
+
+State clearly whether the system was tested with:
+
+```text
+Real Arduino + GRBL
+```
+
+or:
+
+```text
+Software/mock only
+```
+
+Never claim hardware testing if hardware was not actually available.
+
+## 7. Known limitations
+
+List them.
+
+## 8. Next phase
+
+Do NOT implement the next phase.
+
+Only propose it:
+
+```text
+Phase 2:
+Home + manual GRBL commands
+
+Phase 3:
+Jogging
+
+Phase 4:
+Single-file G-code streaming
+
+Phase 5:
+Connect generated Head 1 / Head 2 / Gap Fill files
+
+Phase 6:
+Dual-head parallel execution
+```
+
+---
+
+# FINAL COMMAND
+
+Start by inspecting the repository and the actual UGS source/dependency structure.
+
+Then implement **ONLY PHASE 1**.
+
+Do not implement Homing, Jogging, Streaming, Run, Pause, Resume, Stop, or automatic machine movement yet.
+
+Do not rewrite the existing G-code splitting system.
+
+Do not replace the existing architecture.
+
+The goal of this phase is simply:
+
+```text
+OUR SOFTWARE
+     ↓
+LOCAL MACHINE AGENT
+     ↓
+UGS CORE
+     ↓
+SERIAL
+     ↓
+ARDUINO + GRBL
+```
+
+with reliable connection and status monitoring for two independent controllers, **without moving the machine**.

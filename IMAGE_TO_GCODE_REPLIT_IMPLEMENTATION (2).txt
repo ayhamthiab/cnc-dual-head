@@ -1,0 +1,2183 @@
+IMAGE-TO-G-CODE REPLIT IMPLEMENTATION
+=====================================
+
+Purpose
+-------
+
+This document describes the current Image-to-G-Code implementation in the
+DMHC-EM Replit project. It is intended as an implementation specification for
+reproducing the same behavior in another copy of the project.
+
+The current implementation is a JSON/Data-URL API flow. It is not a multipart
+upload flow. The generated G-code is placed in the existing Workspace editor,
+but it is not compiled or sent to a CNC machine automatically.
+
+
+1. PROJECT STRUCTURE
+====================
+
+Backend
+-------
+
+artifacts/api-server/src/lib/image-to-gcode.ts
+
+* File type: TypeScript module
+* Status: MODIFIED / REPLACED
+* Relevance: Main image decoding, image preprocessing, vector/centerline
+  extraction, path ordering, G-code generation, and final validation.
+
+artifacts/api-server/src/routes/jobs.ts
+
+* File type: TypeScript Express router
+* Status: MODIFIED
+* Relevance: Defines POST /api/image-to-gcode and connects the request to the
+  image-to-G-code library.
+
+artifacts/api-server/src/app.ts
+
+* File type: TypeScript Express application
+* Status: USED
+* Relevance: Provides JSON body parsing and mounts the API router at /api.
+  The image feature uses the existing express.json configuration; this file
+  does not contain image-specific logic.
+
+artifacts/api-server/src/routes/index.ts
+
+* File type: TypeScript Express router index
+* Status: USED
+* Relevance: Registers the existing jobs router, which exposes the image
+  endpoint through the /api prefix.
+
+artifacts/api-server/src/lib/image-to-gcode.test.ts
+
+* File type: TypeScript Node test module
+* Status: MODIFIED / REPLACED
+* Relevance: Tests vector paths, rectangles, lines, disconnected shapes,
+  threshold behavior, noise filtering, bounds, and Z validation.
+
+artifacts/api-server/package.json
+
+* File type: JSON package manifest
+* Status: MODIFIED / USED
+* Relevance: Contains the API test script:
+  tsx --test src/lib/*.test.ts
+  and the tsx development dependency used to run the TypeScript tests.
+
+Frontend
+--------
+
+artifacts/dmhc-ui/src/pages/home.tsx
+
+* File type: React TypeScript page
+* Status: MODIFIED
+* Relevance: Owns the image picker, preview, conversion settings, conversion
+  states, API mutation, and insertion into the existing G-code Workspace.
+
+API contract and generated clients
+-----------------------------------
+
+lib/api-spec/openapi.yaml
+
+* File type: OpenAPI YAML specification
+* Status: MODIFIED
+* Relevance: Defines ImageToGcodeInput, ImageToGcodeResponse, the endpoint,
+  limits, defaults, and documented HTTP responses.
+
+lib/api-client-react/src/generated/api.ts
+
+* File type: Generated TypeScript React Query client
+* Status: GENERATED / USED
+* Relevance: Contains getGenerateImageToGcodeUrl, generateImageToGcode, and
+  useGenerateImageToGcode. The generated client sends JSON to
+  /api/image-to-gcode.
+
+lib/api-client-react/src/generated/api.schemas.ts
+
+* File type: Generated TypeScript interfaces
+* Status: GENERATED / MODIFIED
+* Relevance: Defines ImageToGcodeInput, ImageToGcodeResponse, and BoundingBox
+  types used by the frontend client.
+
+lib/api-zod/src/generated/api.ts
+
+* File type: Generated Zod schemas
+* Status: GENERATED / MODIFIED
+* Relevance: Defines GenerateImageToGcodeBody and its defaults and limits,
+  which are used for backend request validation.
+
+lib/api-zod/src/generated/types/imageToGcodeInput.ts
+
+* File type: Generated TypeScript interface
+* Status: GENERATED / MODIFIED
+* Relevance: Defines the generated input type.
+
+lib/api-zod/src/generated/types/imageToGcodeResponse.ts
+
+* File type: Generated TypeScript interface
+* Status: GENERATED / MODIFIED
+* Relevance: Defines the generated response type.
+
+Dependency and lock files
+-------------------------
+
+pnpm-workspace.yaml
+
+* File type: YAML workspace configuration
+* Status: MODIFIED / USED
+* Relevance: Provides the catalog version of tsx used by the backend tests.
+
+pnpm-lock.yaml
+
+* File type: pnpm lockfile
+* Status: MODIFIED / USED
+* Relevance: Locks the tsx dependency and the resulting workspace dependency
+  graph.
+
+Native image dependency
+-----------------------
+
+ImageMagick is invoked as an external executable. It is not an npm package
+declared in the project. The executable is selected by:
+
+IMAGE_MAGICK_COMMAND
+
+If the environment variable is absent or blank, the command defaults to:
+
+magick
+
+No sharp, OpenCV, Potrace, or other image-vectorization npm dependency is
+used by the current implementation.
+
+
+2. COMPLETE FILE CHANGE INVENTORY
+=================================
+
+The feature-specific source and generated files are:
+
+1. artifacts/api-server/src/lib/image-to-gcode.ts
+   Status: MODIFIED / REPLACED
+   Main image-to-G-code implementation.
+
+2. artifacts/api-server/src/routes/jobs.ts
+   Status: MODIFIED
+   Adds the POST /api/image-to-gcode route.
+
+3. artifacts/dmhc-ui/src/pages/home.tsx
+   Status: MODIFIED
+   Adds the image conversion UI and Workspace integration.
+
+4. lib/api-spec/openapi.yaml
+   Status: MODIFIED
+   Adds or updates the image endpoint and schemas.
+
+5. lib/api-client-react/src/generated/api.schemas.ts
+   Status: GENERATED / MODIFIED
+   Adds the image request and response TypeScript types.
+
+6. lib/api-client-react/src/generated/api.ts
+   Status: GENERATED / USED
+   Provides the generated API function and React Query mutation hook.
+
+7. lib/api-zod/src/generated/api.ts
+   Status: GENERATED / MODIFIED
+   Adds backend request and response Zod schemas.
+
+8. lib/api-zod/src/generated/types/imageToGcodeInput.ts
+   Status: GENERATED / MODIFIED
+   Adds the generated image input interface.
+
+9. lib/api-zod/src/generated/types/imageToGcodeResponse.ts
+   Status: GENERATED / MODIFIED
+   Adds the generated image response interface.
+
+10. artifacts/api-server/src/lib/image-to-gcode.test.ts
+    Status: MODIFIED / REPLACED
+    Adds the image-to-G-Code unit tests.
+
+11. artifacts/api-server/package.json
+    Status: MODIFIED / USED
+    Provides the TypeScript test command and tsx dependency declaration.
+
+12. pnpm-workspace.yaml
+    Status: MODIFIED / USED
+    Provides the tsx catalog entry.
+
+13. pnpm-lock.yaml
+    Status: MODIFIED / USED
+    Locks the package graph.
+
+No image-to-G-Code source file is added as a separate service or controller.
+The main implementation is in the existing API server library.
+
+No existing CNC execution, serial, GRBL, dual-head, pause, resume, abort, or
+alarm source file is modified by this feature.
+
+No files are deleted or renamed by the current implementation.
+
+
+3. BACKEND IMPLEMENTATION
+=========================
+
+3.1 Constants
+-------------
+
+File:
+artifacts/api-server/src/lib/image-to-gcode.ts
+
+Constant:
+IMAGE_TO_GCODE_LIMITS
+
+Values:
+
+maxX = 300
+maxY = 615
+maxUploadBytes = 10 * 1024 * 1024
+maxInputPixels = 20_000_000
+maxRasterDimension = 480
+maxPaths = 2_000
+
+Other constants:
+
+SUPPORTED_FORMATS = Set(["PNG", "JPEG", "WEBP"])
+
+DATA_URL_RE accepts:
+
+data:image/png;base64,...
+data:image/jpeg;base64,...
+data:image/webp;base64,...
+
+The regular expression is case-insensitive and permits base64 whitespace.
+
+3.2 Public types
+----------------
+
+ImageToGcodeOptions
+
+{
+  imageData: string;
+  maxX: number;
+  maxY: number;
+  penDownZ: number;
+  penUpZ: number;
+  threshold: number;
+}
+
+ImageToGcodeResult
+
+{
+  gcode: string;
+  width: number;
+  height: number;
+  penDownZ: number;
+  penUpZ: number;
+  threshold: number;
+  sourceWidth: number;
+  sourceHeight: number;
+  pathCount: number;
+  commandCount: number;
+  bounds: {
+    xMin: number;
+    xMax: number;
+    yMin: number;
+    yMax: number;
+  };
+}
+
+ImageToGcodeError
+
+This custom Error has a statusCode of either 400 or 413. The default is 400.
+
+Internal VectorPath:
+
+{
+  points: RasterPoint[];
+  closed: boolean;
+}
+
+RasterPoint:
+
+{
+  x: number;
+  y: number;
+}
+
+3.3 validateOptions
+--------------------
+
+Function:
+validateOptions
+
+File:
+artifacts/api-server/src/lib/image-to-gcode.ts
+
+Inputs:
+ImageToGcodeOptions
+
+Behavior:
+
+* maxX, maxY, penDownZ, penUpZ, and threshold must be finite numbers.
+* maxX must be greater than 0 and no greater than 300.
+* maxY must be greater than 0 and no greater than 615.
+* threshold must be an integer from 0 through 255 inclusive.
+
+Errors:
+
+* Non-finite values produce "<label> must be a finite number."
+* Invalid X produces:
+  "X dimension must be greater than 0 and no greater than 300 mm."
+* Invalid Y produces:
+  "Y dimension must be greater than 0 and no greater than 615 mm."
+* Invalid threshold produces:
+  "Threshold must be an integer from 0 to 255."
+
+3.4 decodeImageData
+--------------------
+
+Function:
+decodeImageData
+
+Inputs:
+imageData: string
+
+Outputs:
+
+{
+  mimeType: string;
+  bytes: Buffer;
+}
+
+Behavior:
+
+1. Requires a supported image Data URL.
+2. Removes whitespace from the base64 payload.
+3. Decodes the payload with Buffer.from(..., "base64").
+4. Rejects empty bytes.
+5. Rejects decoded files larger than 10 MiB with status 413.
+
+It does not accept a filesystem path, raw multipart file, or arbitrary URL.
+
+3.5 runImageMagick
+-------------------
+
+Function:
+runImageMagick
+
+Inputs:
+args: string[]
+maxBuffer: number = 2 * 1024 * 1024
+
+Behavior:
+
+The command is IMAGE_MAGICK_COMMAND or "magick". Every invocation prepends:
+
+-limit memory 128MiB
+-limit map 256MiB
+-limit disk 256MiB
+
+If the executable is missing, it throws:
+
+ImageMagick is not available
+
+Other ImageMagick execution failures become:
+
+Unable to read image.
+
+3.6 readImageMetadata
+----------------------
+
+Function:
+readImageMetadata
+
+Inputs:
+inputPath: string
+
+ImageMagick command:
+
+<inputPath> -format "%m %w %h" info:
+
+Outputs:
+
+{
+  format: string;
+  width: number;
+  height: number;
+}
+
+Behavior:
+
+* Only PNG, JPEG, and WEBP metadata is accepted.
+* Width and height must be positive integers.
+* width * height must not exceed 20,000,000 pixels.
+* Too many pixels produce status 413:
+  "Image dimensions are too large to process safely."
+
+After metadata is read, the implementation compares the format found by
+ImageMagick with the MIME type declared in the Data URL. A mismatch produces:
+
+Image content does not match the selected file format.
+
+3.7 getRasterSize
+------------------
+
+Function:
+getRasterSize
+
+Inputs:
+width: number
+height: number
+
+Output:
+
+{
+  width: number;
+  height: number;
+}
+
+Behavior:
+
+The image is downsampled only when either source dimension is greater than
+480. The scale is:
+
+min(1, 480 / width, 480 / height)
+
+Each output dimension is:
+
+max(2, round(sourceDimension * scale))
+
+The original source dimensions remain available in the response as
+sourceWidth and sourceHeight.
+
+3.8 buildBinaryMask
+--------------------
+
+Function:
+buildBinaryMask
+
+Inputs:
+
+pixels: Buffer
+width: number
+height: number
+threshold: number
+
+Output:
+
+Uint8Array with width * height entries.
+
+Exact pixel rule:
+
+pixels[index] <= threshold ? 1 : 0
+
+Therefore:
+
+* Dark pixels are drawing pixels.
+* White pixels are normally background.
+* Equality with the threshold is included as drawing.
+* Polarity is fixed; there is no inversion option.
+
+3.9 removeSmallComponents
+--------------------------
+
+Function:
+removeSmallComponents
+
+Inputs:
+
+mask: Uint8Array
+width: number
+height: number
+
+Output:
+
+Cleaned Uint8Array.
+
+Algorithm:
+
+* Uses breadth-first traversal of foreground connected components.
+* Connectivity comes from the eight-neighbor getNeighbors function.
+* The minimum component size is:
+
+  max(2, min(12, floor(width * height / 50_000)))
+
+* Components smaller than this value are dropped.
+* Components at or above this value are copied to the output mask.
+
+At the normal 480 x 480 working size the minimum is 4 pixels. For the small
+80 x 60 test images it is 2 pixels.
+
+3.10 skeletonize
+-----------------
+
+Function:
+skeletonize
+
+Inputs:
+
+mask: Uint8Array
+width: number
+height: number
+
+Output:
+
+Uint8Array containing a thinned foreground skeleton.
+
+Algorithm:
+
+* Starts with a copy of the cleaned binary mask.
+* Repeats until no pixels change or 200 iterations have been reached.
+* Each iteration has two Zhang-Suen-style deletion passes.
+* For each foreground pixel, the eight neighbors are read in clockwise order.
+* A pixel is considered only when its neighbor count is 2 through 6.
+* The number of 0-to-1 cyclic transitions must equal 1.
+* Each pass applies its own north/east/south/west deletion conditions.
+* Deletions are collected first and applied after the scan for that pass.
+
+3.11 getNeighbors
+------------------
+
+Function:
+getNeighbors
+
+Inputs:
+
+mask: Uint8Array
+index: number
+width: number
+height: number
+
+Output:
+
+An array of foreground pixel indexes.
+
+The function considers all eight surrounding directions. It suppresses a
+diagonal edge when the two diagonal pixels are already connected through an
+orthogonal foreground bridge. This prevents a thinned rectangle corner from
+becoming a small triangular graph with duplicate short paths.
+
+3.12 traceSkeletonPaths
+------------------------
+
+Function:
+traceSkeletonPaths
+
+Inputs:
+
+skeleton: Uint8Array
+width: number
+height: number
+
+Output:
+
+VectorPath[]
+
+Algorithm:
+
+1. Compute the graph degree of each foreground pixel.
+2. Use an edge key based on the two endpoint indexes, independent of direction.
+3. Mark traversed edges in visitedEdges.
+4. First trace edges from pixels whose degree is not 2.
+5. Then trace any remaining unvisited edges, including closed loops.
+6. Continue through degree-2 pixels until a branch, an already visited edge, or
+   the starting point is reached.
+7. Mark a path closed when the trace returns to its starting pixel.
+
+This is a centerline graph tracer, not a filled-region contour hierarchy
+algorithm.
+
+3.13 perpendicularDistance and simplifyPolyline
+------------------------------------------------
+
+Functions:
+
+perpendicularDistance
+simplifyPolyline
+
+Inputs:
+
+RasterPoint arrays and a tolerance.
+
+Output:
+
+A reduced RasterPoint array.
+
+The current tolerance is:
+
+1.25 raster pixels
+
+The implementation is recursive Ramer-Douglas-Peucker simplification. Consecutive
+duplicate points are removed before and after simplification.
+
+3.14 dedupePoints
+------------------
+
+Function:
+dedupePoints
+
+Removes only consecutive points with identical x and y values. It is not a
+global geometric duplicate-path detector.
+
+3.15 snapAxisAlignedRectangle
+--------------------------------
+
+Function:
+snapAxisAlignedRectangle
+
+Inputs:
+RasterPoint[] after simplification.
+
+Output:
+RasterPoint[].
+
+Behavior:
+
+The function returns the original points unless all of the following are true:
+
+* The path contains 4 through 6 points.
+* Points can be mapped to four distinct bounding-box corners.
+* The resulting consecutive edges are horizontal or vertical.
+* Every original point is within 2.5 raster pixels of its mapped corner.
+
+When all conditions pass, the points are replaced with the mapped bounding-box
+corners. This is a narrow rectangle heuristic. It does not snap arbitrary
+curves, circles, logos, or technical drawings.
+
+3.16 cleanVectorPath
+---------------------
+
+Function:
+cleanVectorPath
+
+Inputs:
+VectorPath
+
+Output:
+VectorPath or null.
+
+Behavior:
+
+* Remove consecutive duplicate points.
+* Apply RDP simplification with tolerance 1.25.
+* Discard paths with fewer than two points.
+* For closed paths, remove a repeated last point when it equals the first.
+* Require at least three points for a closed path.
+* Apply the guarded rectangle snap only to closed paths.
+* Preserve the closed flag.
+
+3.17 extractVectorPaths
+-----------------------
+
+Function:
+extractVectorPaths
+
+Inputs:
+
+pixels: Buffer
+width: number
+height: number
+threshold: number
+
+Output:
+
+VectorPath[]
+
+Pipeline:
+
+buildBinaryMask
+-> removeSmallComponents
+-> skeletonize
+-> traceSkeletonPaths
+-> cleanVectorPath
+-> discard null paths
+-> limit to the first 2,000 paths
+
+If no path remains, it throws:
+
+No drawable content was detected in the image.
+
+There is no separate global geometric duplicate-path comparison. Edge visitation
+and consecutive-point cleanup provide the current duplicate prevention.
+
+3.18 formatNumber
+------------------
+
+Function:
+formatNumber
+
+Behavior:
+
+* Rejects non-finite numbers.
+* Uses toFixed(3).
+* Removes trailing zeroes and a trailing decimal point.
+
+Examples:
+
+5.000 -> 5
+0.000 -> 0
+12.340 -> 12.34
+
+3.19 orderPaths
+----------------
+
+Function:
+orderPaths
+
+Inputs:
+VectorPath[]
+
+Output:
+Ordered VectorPath[].
+
+Algorithm:
+
+* Starts from raster point { x: 0, y: 0 }.
+* For each remaining path, compares the squared distance to its first and last
+  points.
+* Selects the closest path endpoint.
+* Reverses the path when its last endpoint is closer than its first endpoint.
+* Repeats until no paths remain.
+
+This is a nearest-endpoint greedy ordering algorithm. It is not a global
+traveling-salesperson optimizer.
+
+3.20 buildGcode
+----------------
+
+Function:
+buildGcode
+
+Inputs:
+
+paths: VectorPath[]
+rasterWidth: number
+rasterHeight: number
+options: ImageToGcodeOptions
+sourceWidth: number
+sourceHeight: number
+
+Output:
+ImageToGcodeResult
+
+Fitted drawing dimensions:
+
+fitScale = min(maxX / sourceWidth, maxY / sourceHeight)
+width = sourceWidth * fitScale
+height = sourceHeight * fitScale
+offsetX = (maxX - width) / 2
+offsetY = (maxY - height) / 2
+
+The image aspect ratio is therefore preserved. The drawing is centered inside
+the requested maxX by maxY workspace.
+
+Raster-to-machine conversion:
+
+x = clamp(
+  offsetX + (point.x / max(1, rasterWidth - 1)) * width,
+  0,
+  maxX
+)
+
+y = clamp(
+  offsetY +
+    ((rasterHeight - 1 - point.y) / max(1, rasterHeight - 1)) * height,
+  0,
+  maxY
+)
+
+The Y expression reverses the raster row direction so machine Y increases
+upward. The clamp is applied to every converted point.
+
+For each ordered path:
+
+1. Rapid to the first XY point with pen up.
+2. Move to penDownZ with feed 1000.
+3. Emit every remaining path point with feed 2000.
+4. If the path is closed, emit the first point again to close it.
+5. Return to penUpZ.
+
+The response width and height are the fitted drawing dimensions, while
+sourceWidth and sourceHeight are the decoded original image dimensions.
+
+3.21 validateGeneratedGcode
+----------------------------
+
+Function:
+validateGeneratedGcode
+
+Inputs:
+
+gcode: string
+maxX: number
+maxY: number
+penDownZ: number
+penUpZ: number
+
+Output:
+
+{
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+}
+
+Algorithm:
+
+* Split the G-code into lines.
+* Remove semicolon comments before reading coordinates.
+* Parse X, Y, and Z values with a case-insensitive coordinate regular
+  expression.
+* Reject non-finite coordinate values.
+* Calculate min and max X and Y.
+* Use a tolerance of 0.0005.
+* Reject X below -tolerance or above maxX + tolerance.
+* Reject Y below -tolerance or above maxY + tolerance.
+* Reject every Z value that is not within tolerance of either penDownZ or
+  penUpZ.
+
+This validation runs after G-code generation and before the result is returned.
+
+3.22 generateImageToGcode
+--------------------------
+
+Function:
+generateImageToGcode
+
+Inputs:
+ImageToGcodeOptions
+
+Output:
+Promise<ImageToGcodeResult>
+
+Exact flow:
+
+1. Validate numeric options.
+2. Decode the supported Data URL.
+3. Create a temporary directory named with the
+   dmhc-image-to-gcode- prefix.
+4. Write the decoded bytes to source-image.
+5. Read metadata with ImageMagick.
+6. Verify declared MIME type against decoded ImageMagick format.
+7. Calculate the working raster dimensions, capped at 480 per side.
+8. Invoke ImageMagick to:
+   - remove the alpha channel over a white background,
+   - convert to Gray,
+   - resize to the working raster dimensions,
+   - write 8-bit raw grayscale bytes.
+9. Read grayscale.raw and verify the expected byte count.
+10. Extract vector paths using extractVectorPaths.
+11. Generate and validate G-code using buildGcode.
+12. Always remove the temporary directory in finally, including errors.
+
+
+4. IMAGE PROCESSING PIPELINE
+============================
+
+The actual pipeline is:
+
+IMAGE DATA URL
+    |
+    v
+decodeImageData
+    |
+    v
+Temporary source file
+    |
+    v
+readImageMetadata
+    |
+    v
+ImageMagick grayscale conversion and resize
+    |
+    v
+8-bit grayscale raw pixels
+    |
+    v
+buildBinaryMask
+    |
+    v
+removeSmallComponents
+    |
+    v
+skeletonize (Zhang-Suen-style two-pass thinning)
+    |
+    v
+traceSkeletonPaths
+    |
+    v
+cleanVectorPath
+    |
+    v
+RDP simplification and guarded rectangle snapping
+    |
+    v
+orderPaths
+    |
+    v
+aspect-ratio-preserving machine coordinate conversion
+    |
+    v
+buildGcode
+    |
+    v
+validateGeneratedGcode
+    |
+    v
+ImageToGcodeResponse
+
+There is no Potrace stage, OpenCV stage, filled-contour hierarchy stage, or
+independent circle detector in the current implementation.
+
+
+5. THRESHOLD IMPLEMENTATION
+===========================
+
+Minimum:
+0
+
+Maximum:
+255
+
+Default:
+128
+
+Frontend validation:
+
+In Home, the string state imgThreshold is converted with Number(...). It is
+valid only when:
+
+* the input is not empty,
+* Number.isInteger(imgThresholdNum) is true,
+* the value is >= 0,
+* the value is <= 255.
+
+Invalid input marks the field as destructive and disables image generation.
+
+Backend validation:
+
+The generated Zod schema checks the number is between 0 and 255. The
+implementation validates again with Number.isInteger and the same inclusive
+range.
+
+Pixel polarity:
+
+The exact drawing condition is:
+
+grayscalePixel <= threshold
+
+Dark pixels are treated as drawing. White pixels are treated as background
+unless threshold is high enough to include them.
+
+Inversion:
+
+NOT IMPLEMENTED. There is no inversion checkbox or inversion API field.
+
+Threshold = 0:
+
+Only pixels with grayscale value exactly 0 are included. In practice this
+selects pure black pixels and excludes gray pixels and white background.
+
+Threshold = 128:
+
+Pixels with grayscale values from 0 through 128 inclusive are included.
+This is the default.
+
+Threshold = 255:
+
+All 8-bit grayscale values from 0 through 255 inclusive satisfy the mask
+condition. This can include the white background and may produce substantially
+different geometry depending on the image.
+
+Invalid values:
+
+* -1: rejected.
+* 256: rejected.
+* 12.5: rejected because it is not an integer.
+* NaN, Infinity, and -Infinity: rejected as non-finite.
+
+
+6. MACHINE DIMENSION LIMITS AND SCALING
+=======================================
+
+Hard limits:
+
+X maximum = 300 mm
+Y maximum = 615 mm
+
+Backend source:
+
+IMAGE_TO_GCODE_LIMITS in
+artifacts/api-server/src/lib/image-to-gcode.ts
+
+Backend validation:
+
+maxX > 0 and maxX <= 300
+maxY > 0 and maxY <= 615
+
+Generated Zod schema:
+
+maxX minimum = 0.0001
+maxX maximum = 300
+maxX default = 300
+
+maxY minimum = 0.0001
+maxY maximum = 615
+maxY default = 615
+
+Frontend defaults:
+
+imgMaxX = "300"
+imgMaxY = "615"
+
+Frontend validation:
+
+maxX is finite, greater than 0, and no greater than 300.
+maxY is finite, greater than 0, and no greater than 615.
+
+Scaling:
+
+The source aspect ratio is preserved. The image is uniformly scaled to fit
+inside maxX by maxY:
+
+fitScale = min(maxX / sourceWidth, maxY / sourceHeight)
+
+The unused dimension is centered with offsetX or offsetY.
+
+Coordinate safety:
+
+* Every converted point is clamped to 0 through maxX and 0 through maxY.
+* The complete generated G-code is parsed again.
+* Final validation rejects any coordinate outside the requested workspace,
+  with a tolerance of 0.0005.
+
+The implementation therefore rejects invalid requested dimensions and refuses
+to return generated G-code whose X/Y coordinates exceed the configured
+workspace limits.
+
+
+7. Z AXIS AND PEN CONTROL
+=========================
+
+Image conversion defaults:
+
+penDownZ = 0
+penUpZ = 5
+
+Frontend state:
+
+imgPenDownZ = "0"
+imgPenUpZ = "5"
+
+The values are editable numeric inputs. They must be non-empty finite numbers
+in the frontend. The backend also requires finite numbers.
+
+Travel:
+
+Every path starts with:
+
+G0 X... Y...
+G1 Z<penDownZ> F1000
+
+The path is drawn with G1 XY commands at F2000. Every disconnected path ends
+with:
+
+G0 Z<penUpZ>
+
+The initial header also raises the pen. The final footer raises it again.
+
+Representative output:
+
+G0 Z5
+G0 X18.987 Y400.932
+G1 Z0 F1000
+G1 X281.013 Y400.932 F2000
+G1 X281.013 Y214.068 F2000
+G1 X18.987 Y214.068 F2000
+G1 X18.987 Y400.932 F2000
+G0 Z5
+
+No machine is contacted during image conversion.
+
+
+8. G-CODE GENERATION
+====================
+
+Header:
+
+; DMHC image-to-gcode vector paths
+G21
+G90
+G0 Z<penUpZ>
+
+G21 selects millimetres.
+G90 selects absolute coordinates.
+
+Feeds:
+
+Pen down:
+G1 Z<penDownZ> F1000
+
+Drawing moves:
+G1 X<value> Y<value> F2000
+
+Rapid moves:
+
+G0 Z<penUpZ>
+G0 X<value> Y<value>
+
+Closed path behavior:
+
+If a VectorPath has closed = true, the first machine point is emitted again
+after the other points:
+
+G1 X<startX> Y<startY> F2000
+
+This closes a rectangle or other closed loop.
+
+Footer:
+
+; End vector drawing
+G0 Z<penUpZ>
+
+Decimal formatting:
+
+* Values are rounded/formatted with toFixed(3).
+* Trailing zeroes and a trailing decimal point are removed.
+* Maximum visible precision is three decimal places.
+* Non-finite values are rejected.
+
+Command ordering for every path:
+
+G0 Xstart Ystart
+G1 ZpenDown F1000
+G1 Xpoint Ypoint F2000
+...
+G1 Xstart Ystart F2000       (closed paths only)
+G0 ZpenUp
+
+commandCount is the number of generated lines in the lines array, including
+comments and the final footer commands. It is not limited to only motion
+commands.
+
+
+9. FRONTEND IMPLEMENTATION
+==========================
+
+File:
+artifacts/dmhc-ui/src/pages/home.tsx
+
+Component:
+default export function Home()
+
+Props:
+None.
+
+Relevant state:
+
+gcodeContent
+
+The existing Workspace G-code state. Image conversion writes the returned
+res.gcode here.
+
+filename
+
+The existing Workspace filename state. After image conversion, it becomes the
+selected image filename with its extension replaced by .gcode.
+
+imageFile
+
+The selected File object.
+
+imagePreviewUrl
+
+A browser object URL used for the preview.
+
+imgMaxX
+
+String state defaulting to "300".
+
+imgMaxY
+
+String state defaulting to "615".
+
+imgPenDownZ
+
+String state defaulting to "0".
+
+imgPenUpZ
+
+String state defaulting to "5".
+
+imgThreshold
+
+String state defaulting to "128".
+
+conversionStatus
+
+One of:
+
+idle
+reading-image
+processing
+loading-workspace
+success
+error
+
+conversionError
+
+Stores the user-visible conversion error text.
+
+Relevant refs:
+
+imageInputRef
+
+Hidden image file input.
+
+gcodeInputRef
+
+Existing G-code input container. The page scrolls to this area after
+successful conversion.
+
+API hook:
+
+useGenerateImageToGcode from @workspace/api-client-react
+
+Image file behavior:
+
+* The UI accepts image/png, image/jpeg, and image/webp.
+* Maximum selected file size is 10 MB.
+* Invalid type or size displays a destructive toast.
+* The file input is reset after invalid selection.
+* Valid files create an object URL for preview.
+* The object URL is revoked during cleanup or when the image is replaced.
+* A remove button clears the selected file and resets the mutation.
+
+There is no drag-and-drop handler in the current component.
+
+Image conversion handler:
+
+handleGenerateGcode
+
+Behavior:
+
+1. Stops when there is no image, invalid settings, or an active conversion.
+2. Captures the current File and numeric settings locally.
+3. Sets status to reading-image.
+4. Reads the file with FileReader.readAsDataURL.
+5. Sets status to processing.
+6. Calls generateGcode.mutate with:
+
+   {
+     imageData: base64Data,
+     maxX: currentMaxX,
+     maxY: currentMaxY,
+     penDownZ: currentPenDownZ,
+     penUpZ: currentPenUpZ,
+     threshold: currentThreshold
+   }
+
+7. On success, sets status to loading-workspace.
+8. After a 300 ms timeout:
+   * sets gcodeContent to res.gcode,
+   * changes the filename extension to .gcode,
+   * sets status to success,
+   * displays "Generated <pathCount> paths.",
+   * scrolls to the existing G-code input area.
+9. On API error, sets status to error and displays the error.
+10. On FileReader error, sets status to error and displays the read error.
+
+The 300 ms delay is UI sequencing only; it does not run the compiler.
+
+Image UI test IDs:
+
+button-upload-image
+input-file-image
+button-remove-image
+input-image-max-x
+input-image-max-y
+input-image-pen-up-z
+input-image-pen-down-z
+input-image-threshold
+button-generate-gcode
+textarea-gcode
+button-run-compiler
+
+Visible states:
+
+* Idle: image prompt and image upload area.
+* Reading: "Reading image data..."
+* Processing: "Generating G-code toolpaths..."
+* Loading Workspace: "Loading into workspace..."
+* Success: "Image converted successfully. The G-code is ready for review below."
+* Error: "Conversion failed: <error>"
+
+The generated G-code is displayed in the existing textarea with
+data-testid="textarea-gcode".
+
+The existing line badge is calculated with:
+
+gcodeContent.split("\n").length
+
+Because the generated G-code ends with a newline, this displayed line count
+can be one greater than the number of non-empty lines.
+
+
+10. API CONTRACT
+================
+
+Mounting:
+
+The Express app mounts the router at:
+
+/api
+
+Method:
+
+POST
+
+URL:
+
+/api/image-to-gcode
+
+Content-Type:
+
+application/json
+
+Multipart:
+
+NOT IMPLEMENTED. The request does not have a multipart file field. The image
+is sent as a base64 Data URL string in JSON.
+
+Request body:
+
+{
+  "imageData": "data:image/png;base64,<base64 payload>",
+  "maxX": 300,
+  "maxY": 615,
+  "penDownZ": 0,
+  "penUpZ": 5,
+  "threshold": 128
+}
+
+Required request property:
+
+imageData
+
+Optional request properties and defaults:
+
+maxX: number, default 300, range 0.0001 through 300 in the generated schema
+maxY: number, default 615, range 0.0001 through 615 in the generated schema
+penDownZ: number, default 0
+penUpZ: number, default 5
+threshold: integer, default 128, range 0 through 255
+
+imageData generated schema maxLength:
+
+14,000,000 characters
+
+Backend decoded binary size limit:
+
+10 MiB
+
+Response 200:
+
+{
+  "gcode": "string",
+  "width": 300,
+  "height": 225,
+  "penDownZ": 0,
+  "penUpZ": 5,
+  "threshold": 128,
+  "sourceWidth": 80,
+  "sourceHeight": 60,
+  "pathCount": 2,
+  "commandCount": 20,
+  "bounds": {
+    "xMin": 15.19,
+    "xMax": 284.81,
+    "yMin": 210.254,
+    "yMax": 404.746
+  }
+}
+
+The numbers above are from a real two-rectangle conversion. The G-code itself
+is shown in the examples section.
+
+Error response:
+
+{
+  "error": "message"
+}
+
+HTTP statuses:
+
+400:
+
+* Zod request validation failure.
+* Unsupported Data URL or image format.
+* Empty or unreadable image.
+* MIME/content mismatch.
+* Invalid dimensions.
+* Invalid threshold.
+* No drawable content.
+* Generated G-code bounds/Z validation failure.
+
+413:
+
+* Decoded upload exceeds 10 MiB.
+* Source dimensions exceed 20,000,000 pixels.
+
+500:
+
+* Unexpected conversion failure.
+* ImageMagick executable is unavailable.
+* Any non-ImageToGcodeError escaping the conversion.
+
+The route implementation is:
+
+1. GenerateImageToGcodeBody.safeParse(req.body).
+2. Return 400 with the Zod error message when parsing fails.
+3. Apply defaults from the parsed body.
+4. Call generateImageToGcode.
+5. Return the result with status 200.
+6. Map ImageToGcodeError to its statusCode and { error }.
+7. Log unexpected errors and return 500 with:
+   "Unable to convert image to G-code."
+
+
+11. WORKSPACE INTEGRATION
+=========================
+
+Workspace owner:
+
+Home in:
+artifacts/dmhc-ui/src/pages/home.tsx
+
+Workspace state:
+
+gcodeContent
+
+Function that updates it:
+
+handleGenerateGcode, inside the successful mutation callback.
+
+Exact update:
+
+setGcodeContent(res.gcode)
+
+Flow:
+
+Image Upload
+    |
+    v
+handleImageSelect
+    |
+    v
+handleGenerateGcode
+    |
+    v
+FileReader.readAsDataURL
+    |
+    v
+useGenerateImageToGcode mutation
+    |
+    v
+POST /api/image-to-gcode
+    |
+    v
+ImageToGcodeResponse
+    |
+    v
+setGcodeContent(res.gcode)
+    |
+    v
+Existing textarea and Workspace display
+
+Replacement behavior:
+
+The generated G-code replaces the current gcodeContent value. It is not
+appended, and it does not open a separate Workspace.
+
+Filename behavior:
+
+If the selected file is example.png, the Workspace filename becomes
+example.gcode.
+
+Selection behavior:
+
+The generated text is populated in the textarea. It is not programmatically
+selected.
+
+Automatic actions:
+
+* The UI scrolls to the G-code input area after success.
+* The UI does not call Run Compiler.
+* The UI does not create a job automatically.
+* The UI does not connect to a machine automatically.
+* The UI does not send data to Head 1 or Head 2 automatically.
+
+The user must explicitly click the existing Run Compiler button to continue
+into the old G-code processing flow.
+
+
+12. EXECUTION INTEGRATION
+=========================
+
+The Image-to-G-Code feature does not modify the existing execution system.
+
+It does not modify:
+
+* GRBL communication.
+* Serial communication.
+* COM-port handling.
+* Dual-head leases or machine-agent logic.
+* Head 1 or Head 2 controller behavior.
+* Pause behavior.
+* Resume behavior.
+* Abort behavior.
+* ALARM handling.
+* Controller/session lifecycle.
+* Existing /api/process behavior.
+
+After the user manually clicks Run Compiler, the generated text follows the
+same existing processGcode flow as manually pasted or uploaded G-code. The
+image feature only supplies the text in gcodeContent.
+
+The exact downstream machine behavior is therefore the behavior of the
+pre-existing compiler and machine workflow, not a new image-specific path.
+
+
+13. DEPENDENCIES
+================
+
+Node.js built-ins used by the implementation:
+
+node:child_process
+
+Used for execFile and ImageMagick invocation.
+
+node:fs/promises
+
+Used for temporary files, raw pixel reading, and cleanup.
+
+node:os
+
+Used for the system temporary directory.
+
+node:path
+
+Used for temporary path construction.
+
+node:util
+
+Used to promisify execFile.
+
+Existing project dependencies used by the route:
+
+express
+
+Used for Router, Request, and Response.
+
+@workspace/api-zod
+
+Used for GenerateImageToGcodeBody.
+
+Frontend dependencies already present:
+
+@workspace/api-client-react
+
+Used for useGenerateImageToGcode.
+
+React
+
+Used for state, refs, effects, and FileReader event handling.
+
+No new image-processing npm package is used.
+
+tsx
+
+Location: artifacts/api-server/package.json devDependencies
+
+Use: Runs the TypeScript Node test file through the package test script.
+
+The exact version is supplied through the workspace catalog. The current
+workspace lock resolves tsx 4.22.4.
+
+Native executable:
+
+ImageMagick, normally invoked as magick.
+
+No Maven dependencies exist for this feature. There is no Maven module in the
+current implementation.
+
+
+14. CONFIGURATION
+=================
+
+IMAGE_MAGICK_COMMAND = magick
+
+This is the fallback command. A non-empty environment variable can override
+the executable name.
+
+IMAGE_TO_GCODE_LIMITS.maxX = 300
+IMAGE_TO_GCODE_LIMITS.maxY = 615
+IMAGE_TO_GCODE_LIMITS.maxUploadBytes = 10485760
+IMAGE_TO_GCODE_LIMITS.maxInputPixels = 20000000
+IMAGE_TO_GCODE_LIMITS.maxRasterDimension = 480
+IMAGE_TO_GCODE_LIMITS.maxPaths = 2000
+
+ImageMagick per-command limits:
+
+memory = 128MiB
+map = 256MiB
+disk = 256MiB
+
+Express request body limits:
+
+express.json limit = 50mb
+express.text limit = 50mb
+
+The feature-specific Data URL schema limit is 14,000,000 characters, and the
+decoded binary upload limit is 10 MiB.
+
+Frontend defaults:
+
+imgMaxX = 300
+imgMaxY = 615
+imgPenDownZ = 0
+imgPenUpZ = 5
+imgThreshold = 128
+
+No feature flag is used.
+
+
+15. TESTS
+=========
+
+Test file:
+
+artifacts/api-server/src/lib/image-to-gcode.test.ts
+
+Test runner:
+
+Node test through:
+
+tsx --test src/lib/*.test.ts
+
+Current result:
+
+16 tests passed, 0 failed.
+
+Test coverage implemented:
+
+1. Single rectangle
+
+Verifies compact vector output, vector header, reasonable path count, command
+count, and a closed axis-aligned path.
+
+2. Two nested rectangles
+
+Verifies at least two closed paths, separate geometry, compact path count, and
+axis-aligned edges.
+
+3. Single horizontal stroke
+
+Verifies one path and one centerline cut move instead of repeated scanlines.
+
+4. Multiple disconnected shapes
+
+Verifies at least two path blocks and pen-up separation between paths.
+
+5. Isolated noise
+
+Compares a line with a line plus isolated points and verifies that noise does
+not add a path.
+
+6. Threshold 0, 128, and 255
+
+Verifies all three values are accepted, returned, and applied. The test also
+verifies that including the gray line at 128 increases the path count compared
+with threshold 0.
+
+7. Invalid threshold -1
+
+Verifies rejection.
+
+8. Invalid threshold 256
+
+Verifies rejection.
+
+9. Invalid fractional threshold 12.5
+
+Verifies integer-only behavior.
+
+10. Y-axis direction
+
+Verifies that machine Y values increase upward relative to raster rows.
+
+11. X above machine maximum
+
+Verifies rejection of X=301.
+
+12. Y above machine maximum
+
+Verifies rejection of Y=616.
+
+13. Zero X
+
+Verifies rejection.
+
+14. Zero Y
+
+Verifies rejection.
+
+15. Final G-code out-of-bounds validation
+
+Verifies that X=301 is rejected by validateGeneratedGcode.
+
+16. Final unexpected Z validation
+
+Verifies that a Z value different from both penDownZ and penUpZ is rejected.
+
+Additional tests present in the current source:
+
+* A Data URL whose declared MIME type does not match its actual content is
+  rejected.
+* An image with no drawable content is rejected.
+
+Requested test areas that are NOT IMPLEMENTED as dedicated source tests:
+
+* Dedicated aspect-ratio assertion: NOT IMPLEMENTED.
+* Dedicated API route integration test: NOT IMPLEMENTED.
+* Dedicated Workspace insertion unit test: NOT IMPLEMENTED.
+* Dedicated unsupported MIME-type test: NOT IMPLEMENTED. MIME mismatch and
+  empty-image tests exist.
+* Dedicated oversized-upload test: NOT IMPLEMENTED.
+* Dedicated source-pixel-count overflow test: NOT IMPLEMENTED.
+* Dedicated circles test: NOT IMPLEMENTED.
+* Dedicated logos/technical-drawings test: NOT IMPLEMENTED.
+* Dedicated Pause/Resume/Abort/ALARM test: NOT IMPLEMENTED because execution
+  code is intentionally outside this feature.
+
+The feature was also verified manually against the running API and browser
+Workspace. That manual verification is not a committed automated test file.
+
+
+16. EXAMPLE INPUT/OUTPUT
+========================
+
+All examples below use:
+
+Source image: 80 x 60 pixels
+Requested maxX: 300 mm
+Requested maxY: 615 mm
+Threshold: 128
+Pen Down Z: 0
+Pen Up Z: 5
+
+Because the source aspect ratio is 80:60, the fitted drawing is:
+
+width = 300 mm
+height = 225 mm
+
+Example 1: Single rectangle
+---------------------------
+
+Input description:
+
+An 80 x 60 white PNG with a black rectangle drawn from approximately
+pixel (5,5) to (74,54).
+
+Actual result:
+
+sourceWidth = 80
+sourceHeight = 60
+width = 300
+height = 225
+pathCount = 1
+commandCount = 13
+bounds = {
+  xMin: 18.987,
+  xMax: 281.013,
+  yMin: 214.068,
+  yMax: 400.932
+}
+
+Actual G-code:
+
+; DMHC image-to-gcode vector paths
+G21
+G90
+G0 Z5
+G0 X18.987 Y400.932
+G1 Z0 F1000
+G1 X281.013 Y400.932 F2000
+G1 X281.013 Y214.068 F2000
+G1 X18.987 Y214.068 F2000
+G1 X18.987 Y400.932 F2000
+G0 Z5
+; End vector drawing
+G0 Z5
+
+Expected structure:
+
+One closed path with four drawing edges and a return to the starting point.
+
+Example 2: Two nested rectangles
+--------------------------------
+
+Input description:
+
+An 80 x 60 white PNG with black rectangle outlines:
+
+rectangle 4,4 to 75,55
+rectangle 22,17 to 57,42
+
+Actual result:
+
+sourceWidth = 80
+sourceHeight = 60
+width = 300
+height = 225
+pathCount = 2
+commandCount = 20
+bounds = {
+  xMin: 15.19,
+  xMax: 284.81,
+  yMin: 210.254,
+  yMax: 404.746
+}
+
+Actual G-code:
+
+; DMHC image-to-gcode vector paths
+G21
+G90
+G0 Z5
+G0 X15.19 Y404.746
+G1 Z0 F1000
+G1 X284.81 Y404.746 F2000
+G1 X284.81 Y210.254 F2000
+G1 X15.19 Y210.254 F2000
+G1 X15.19 Y404.746 F2000
+G0 Z5
+G0 X83.544 Y259.831
+G1 Z0 F1000
+G1 X216.456 Y259.831 F2000
+G1 X216.456 Y355.169 F2000
+G1 X83.544 Y355.169 F2000
+G1 X83.544 Y259.831 F2000
+G0 Z5
+; End vector drawing
+G0 Z5
+
+Expected structure:
+
+Two closed paths, each with four drawing edges. The inner shape is a separate
+path; there is no special parent/child contour metadata in the response.
+
+Example 3: Disconnected rectangles
+-----------------------------------
+
+Input description:
+
+An 80 x 60 white PNG with two disconnected black rectangle outlines:
+
+rectangle 5,7 to 30,28
+rectangle 49,32 to 74,53
+
+Actual result:
+
+sourceWidth = 80
+sourceHeight = 60
+width = 300
+height = 225
+pathCount = 2
+commandCount = 20
+bounds = {
+  xMin: 18.987,
+  xMax: 281.013,
+  yMin: 217.881,
+  yMax: 393.305
+}
+
+Actual G-code:
+
+; DMHC image-to-gcode vector paths
+G21
+G90
+G0 Z5
+G0 X18.987 Y393.305
+G1 Z0 F1000
+G1 X113.924 Y393.305 F2000
+G1 X113.924 Y313.22 F2000
+G1 X18.987 Y313.22 F2000
+G1 X18.987 Y393.305 F2000
+G0 Z5
+G0 X186.076 Y297.966
+G1 Z0 F1000
+G1 X281.013 Y297.966 F2000
+G1 X281.013 Y217.881 F2000
+G1 X186.076 Y217.881 F2000
+G1 X186.076 Y297.966 F2000
+G0 Z5
+; End vector drawing
+G0 Z5
+
+Expected structure:
+
+Two closed path blocks with pen-up travel between them. No raster row block is
+generated.
+
+
+17. BEFORE / AFTER CODE BEHAVIOR
+================================
+
+Before:
+
+The previous implementation scanned image rows and generated repeated
+horizontal drawing segments for dark pixels. That behavior was raster-like and
+could produce many horizontal lines for a single shape.
+
+After:
+
+The current implementation:
+
+* Converts the image to grayscale.
+* Creates a thresholded binary mask.
+* Removes small connected components.
+* Thins the mask into a skeleton.
+* Traces the skeleton graph.
+* Simplifies paths with RDP.
+* Uses closed vector-like paths for rectangle outlines and other loops.
+* Uses a centerline for simple strokes.
+* Emits compact G1 paths with explicit pen-up travel between disconnected
+  paths.
+
+The old row-by-row scanline behavior is not used by the current image
+converter. Search result:
+
+extractPixelPaths: NOT FOUND in the current implementation.
+
+The word "scanlines" appears only in test descriptions that assert the new
+behavior is not scanline output. There is no active old scanline converter
+function in the current implementation.
+
+
+18. IMPORTANT ALGORITHM DETAILS
+================================
+
+Threshold polarity:
+
+grayscale <= threshold is drawing.
+
+Image inversion:
+
+NOT IMPLEMENTED.
+
+Coordinate origin:
+
+The raster origin is the top-left image pixel. Machine coordinates are
+bottom-left-oriented because raster Y is inverted during conversion.
+
+Y direction:
+
+Machine Y increases as image rows move upward.
+
+Image-to-machine conversion:
+
+Uniform fitScale based on original source dimensions, centered in the
+requested workspace, followed by raster point normalization and clamping.
+
+Rounding:
+
+Machine coordinates are formatted to a maximum of three decimal places.
+
+Path simplification:
+
+Ramer-Douglas-Peucker with tolerance 1.25 raster pixels.
+
+Component filtering:
+
+Minimum connected-component size:
+
+max(2, min(12, floor(width * height / 50_000)))
+
+Path limit:
+
+Only the first 2,000 cleaned paths are retained. The implementation does not
+return an error when more than 2,000 paths are found; it truncates the list.
+
+Contour hierarchy:
+
+NOT IMPLEMENTED as a separate data structure. Nested shapes are represented as
+separate traced paths when the skeleton graph yields separate paths.
+
+Closed-path detection:
+
+A trace is marked closed when it returns to its starting graph pixel.
+
+Open-path detection:
+
+A trace that ends at a branch, unvisited boundary, or non-returning endpoint
+remains open. Open paths are not explicitly closed in G-code.
+
+Duplicate cleanup:
+
+Consecutive identical points are removed. Graph edges are marked visited.
+Global geometric duplicate-path comparison is NOT IMPLEMENTED.
+
+Rectangles:
+
+Near-four-corner closed loops are snapped to bounding-box corners only when
+they are within 2.5 raster pixels and produce four axis-aligned corners.
+
+Circles:
+
+No dedicated circle heuristic is implemented.
+
+Thin lines:
+
+Skeletonization and graph tracing produce centerline-like paths. A horizontal
+stroke test produces one path and one cut move, not one path per image row.
+
+Logos and technical drawings:
+
+No dedicated logo or CAD/technical-drawing mode is implemented. They use the
+same threshold, component, skeleton, graph, and RDP pipeline.
+
+Aspect ratio:
+
+Preserved by the uniform fitScale calculation.
+
+Machine bounds:
+
+Protected first by maxX/maxY option validation, then by point clamping, then by
+final G-code parsing and validation.
+
+
+19. EXACT API/FRONTEND REPRODUCTION RECIPE
+==========================================
+
+IMPLEMENTATION INSTRUCTIONS FOR LOCAL CODING AGENT
+--------------------------------------------------
+
+1. Inspect the local project first.
+
+2. Identify the equivalent backend image-processing module, API router,
+   frontend Workspace page, OpenAPI specification, generated clients, and
+   test locations.
+
+3. Compare architecture rather than blindly copying paths. The current Replit
+   project uses an Express TypeScript API server, a React TypeScript frontend,
+   OpenAPI code generation, and generated Zod/React Query clients.
+
+4. Reproduce the same feature behavior without assuming that the local
+   project has identical filenames.
+
+5. Preserve the existing project architecture. Do not create an unrelated
+   converter endpoint or a second Workspace.
+
+6. Do not break existing CNC functionality.
+
+7. Integrate the generated G-code with the existing Workspace state. The
+   generated response must update the current G-code textarea state.
+
+8. Preserve existing Dual-Head functionality.
+
+9. Preserve GRBL communication.
+
+10. Preserve Pause, Resume, Abort, and ALARM lifecycle behavior. Do not modify
+    those systems for image conversion.
+
+11. Implement the same validation:
+    * PNG, JPEG, WEBP Data URLs only.
+    * Maximum decoded file size 10 MiB.
+    * Maximum source pixel count 20,000,000.
+    * maxX > 0 and <= 300.
+    * maxY > 0 and <= 615.
+    * integer threshold 0 through 255.
+    * finite Z values.
+    * final G-code X/Y/Z validation.
+
+12. Implement the same image-processing algorithm:
+    * ImageMagick metadata and grayscale raw-pixel conversion.
+    * Working raster maximum dimension 480.
+    * Binary mask condition pixel <= threshold.
+    * Connected-component noise removal.
+    * Two-pass Zhang-Suen-style thinning.
+    * Eight-neighbor skeleton graph tracing with redundant diagonal-edge
+      suppression.
+    * RDP simplification at tolerance 1.25.
+    * Guarded axis-aligned rectangle snapping.
+
+13. Implement the same G-code generation behavior:
+    * Header comments and G21/G90.
+    * Pen-up rapid movement.
+    * Pen-down at F1000.
+    * Drawing moves at F2000.
+    * Explicit closure of closed paths.
+    * Pen-up between paths.
+    * Footer comment and final pen-up.
+    * Three-decimal maximum coordinate formatting.
+
+14. Implement the same defaults:
+    * maxX = 300.
+    * maxY = 615.
+    * penDownZ = 0.
+    * penUpZ = 5.
+    * threshold = 128.
+
+15. Implement the same machine limits:
+    * X maximum 300 mm.
+    * Y maximum 615 mm.
+    * Clamp generated points and validate the complete G-code.
+
+16. Run all existing tests.
+
+17. Run new Image-to-G-Code tests covering:
+    * one rectangle,
+    * two nested rectangles,
+    * one line,
+    * disconnected shapes,
+    * noise,
+    * threshold 0/128/255,
+    * invalid thresholds,
+    * X/Y limits,
+    * Z validation,
+    * no scanline output.
+
+18. Build the backend.
+
+19. Build the frontend.
+
+20. Verify the final feature end-to-end:
+    * Select a PNG/JPEG/WEBP file.
+    * Confirm Threshold defaults to 128.
+    * Generate once.
+    * Confirm the API returns vector-like G-code.
+    * Confirm the textarea is populated.
+    * Confirm the filename becomes .gcode.
+    * Confirm Run Compiler was not clicked automatically.
+    * Confirm no machine or serial action occurs.
+
+The local implementation should not add multipart handling unless that is an
+independent local-project requirement. To reproduce this Replit behavior
+exactly, use JSON with a base64 image Data URL.
+
+
+20. UNKNOWN ITEMS
+=================
+
+The following items cannot be determined as historical facts from the current
+source alone:
+
+UNKNOWN — NOT DETERMINED FROM CURRENT SOURCE:
+
+* The exact commit or date when each feature-specific file was first changed.
+* Whether ImageMagick was installed by a project setup step or by the Replit
+  environment outside the repository.
+* The exact historical order in which OpenAPI and generated files were edited.
+* Any local-project filenames that should receive the equivalent implementation.
+
+The current runtime behavior and current source-level algorithms are documented
+above; the unknown items are not required to reproduce the behavior.

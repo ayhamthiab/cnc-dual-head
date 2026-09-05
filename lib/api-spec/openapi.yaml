@@ -1,0 +1,196 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: DMHC-EM CNC Middleware API
+servers:
+  - url: /api
+tags:
+  - { name: health, description: Health operations }
+  - { name: jobs, description: G-code processing jobs }
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      responses:
+        "200": { description: Healthy, content: { application/json: { schema: { $ref: "#/components/schemas/HealthStatus" } } } }
+  /process:
+    post:
+      operationId: processGcode
+      tags: [jobs]
+      summary: Process a G-code file
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ProcessInput" } } }
+      responses:
+        "200": { description: Processing complete, content: { application/json: { schema: { $ref: "#/components/schemas/Job" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+  /image-to-gcode:
+    post:
+      operationId: generateImageToGcode
+      tags: [jobs]
+      summary: Generate vector-like G-code from an image
+      description: Accepts a PNG, JPEG, WEBP, or BMP base64 Data URL in JSON; it neither compiles nor sends G-code to a machine.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ImageToGcodeInput" } } }
+      responses:
+        "200": { description: Generated G-code, content: { application/json: { schema: { $ref: "#/components/schemas/ImageToGcodeResponse" } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+  /jobs:
+    get:
+      operationId: listJobs
+      tags: [jobs]
+      responses:
+        "200": { description: Jobs, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Job" } } } } }
+  /jobs/{jobId}:
+    get:
+      operationId: getJob
+      tags: [jobs]
+      parameters: [{ name: jobId, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Job, content: { application/json: { schema: { $ref: "#/components/schemas/Job" } } } }
+  /jobs/{jobId}/download/{fileKey}:
+    get:
+      operationId: downloadFile
+      tags: [jobs]
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { type: string } }
+        - { name: fileKey, in: path, required: true, schema: { type: string, enum: [head1, head2, gapfill] } }
+      responses:
+        "200": { description: G-code file, content: { text/plain: { schema: { type: string } } } }
+  /jobs/{jobId}/visualization:
+    get:
+      operationId: getVisualization
+      tags: [jobs]
+      parameters: [{ name: jobId, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Visualization, content: { application/json: { schema: { $ref: "#/components/schemas/VisualizationData" } } } }
+components:
+  responses:
+    Error:
+      description: Error
+      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } }
+  schemas:
+    HealthStatus:
+      type: object
+      required: [status]
+      properties: { status: { type: string } }
+    ProcessInput:
+      type: object
+      required: [gcodeContent]
+      properties:
+        gcodeContent: { type: string }
+        filename: { type: string, default: program.gcode }
+        numHeads: { type: integer, default: 2 }
+        gapWidth: { type: number, default: 80 }
+        toolRadius: { type: number, default: 3.175 }
+        safetyMargin: { type: number, default: 0 }
+        head2ReferenceY: { type: number, default: 620 }
+        penUpZ: { type: number, default: 5 }
+        penDownZ: { type: number, default: 0 }
+        gapStartY: { type: [number, "null"] }
+    ImageToGcodeInput:
+      type: object
+      required: [imageData]
+      properties:
+        imageData: { type: string, maxLength: 14000000, description: PNG, JPEG, WEBP, or BMP base64 Data URL }
+        maxX: { type: number, minimum: 0.0001, maximum: 300, default: 300 }
+        maxY: { type: number, minimum: 0.0001, maximum: 615, default: 615 }
+        penDownZ: { type: number, default: 0 }
+        penUpZ: { type: number, default: 5 }
+        threshold: { type: integer, minimum: 0, maximum: 255, default: 128 }
+        detail: { type: string, enum: [low, medium, high], default: medium }
+        adaptiveThreshold: { type: boolean, default: true }
+        mode: { type: string, enum: [line-art, realistic], default: line-art, description: Line-art draws XDoG contours only; realistic adds grayscale-proportional crosshatching. }
+        xOffset: { type: number, minimum: 0, maximum: 300, default: 0 }
+        yOffset: { type: number, minimum: 0, maximum: 615, default: 0 }
+        feedRate: { type: number, exclusiveMinimum: 0, maximum: 50000, default: 1000, description: Constant feed rate in mm/min used unchanged for every XY drawing movement. }
+    ImageToGcodeResponse:
+      type: object
+      required: [gcode, width, height, penDownZ, penUpZ, threshold, feedRate, sourceWidth, sourceHeight, pathCount, commandCount, bounds, detail]
+      properties:
+        gcode: { type: string }
+        width: { type: number }
+        height: { type: number }
+        penDownZ: { type: number }
+        penUpZ: { type: number }
+        threshold: { type: integer }
+        feedRate: { type: number }
+        sourceWidth: { type: integer }
+        sourceHeight: { type: integer }
+        pathCount: { type: integer }
+        commandCount: { type: integer }
+        bounds: { $ref: "#/components/schemas/BoundingBox" }
+        detail: { type: string, enum: [low, medium, high] }
+    BoundingBox:
+      type: object
+      required: [xMin, xMax, yMin, yMax]
+      properties:
+        xMin: { type: number }
+        xMax: { type: number }
+        yMin: { type: number }
+        yMax: { type: number }
+    Job:
+      type: object
+      required: [id, status, filename, createdAt, completedAt, error, config, report]
+      properties:
+        id: { type: string }
+        status: { type: string, enum: [pending, running, success, failed] }
+        filename: { type: string }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: [string, "null"], format: date-time }
+        error: { type: [string, "null"] }
+        config: { $ref: "#/components/schemas/JobConfig" }
+        report: { type: [object, "null"], additionalProperties: true }
+    JobConfig:
+      type: object
+      required: [numHeads, gapWidth, toolRadius, safetyMargin]
+      properties:
+        numHeads: { type: integer }
+        gapWidth: { type: number }
+        toolRadius: { type: number }
+        safetyMargin: { type: number }
+    VisualizationData:
+      type: object
+      required: [segments, densityMap, zones, bounds]
+      properties:
+        segments: { type: array, items: { $ref: "#/components/schemas/SegmentViz" } }
+        densityMap: { type: array, items: { $ref: "#/components/schemas/DensityPoint" } }
+        zones: { $ref: "#/components/schemas/ZoneInfo" }
+        bounds: { $ref: "#/components/schemas/BoundingBox" }
+    SegmentViz:
+      type: object
+      required: [x1, y1, x2, y2, motionType, zone]
+      properties:
+        x1: { type: number }
+        y1: { type: number }
+        x2: { type: number }
+        y2: { type: number }
+        motionType: { type: string, enum: [cut, rapid] }
+        zone: { type: string, enum: [head1, head2, gap, unassigned] }
+    DensityPoint:
+      type: object
+      required: [x, density]
+      properties: { x: { type: number }, density: { type: number } }
+    ZoneInfo:
+      type: object
+      required: [head1, head2, gap]
+      properties:
+        head1: { $ref: "#/components/schemas/ZoneRange" }
+        head2: { $ref: "#/components/schemas/ZoneRange" }
+        gap: { $ref: "#/components/schemas/ZoneRange" }
+    ZoneRange:
+      type: object
+      required: [xMin, xMax, segmentCount]
+      properties:
+        xMin: { type: number }
+        xMax: { type: number }
+        segmentCount: { type: integer }
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties: { error: { type: string } }

@@ -1,0 +1,278 @@
+I need you to investigate and fix the Machine Controller integration and frontend connection issues.
+
+IMPORTANT:
+Do not redesign or remove existing functionality.
+Do not delete features.
+Do not replace the Machine Agent architecture.
+Do not change the API contract unless it is required to fix a verified bug.
+Preserve all existing Head 1 and Head 2 functionality.
+
+CURRENT ENVIRONMENT:
+- Windows 11
+- Frontend/Vite runs on port 25308
+- API server runs on port 25309
+- Machine Agent runs locally on 127.0.0.1:18888
+- Machine Agent is built successfully with Java 17 + Maven.
+- Frontend build succeeds.
+- API server starts successfully.
+- Machine Agent starts successfully.
+
+PROBLEM 1 — MACHINE AGENT CANNOT CONNECT TO CNC:
+
+The Machine Agent successfully starts and listens on:
+
+http://127.0.0.1:18888/api/v1
+
+The health endpoint works.
+
+Windows detects the physical Arduino correctly:
+
+COM6 → Arduino Uno → Status: OK
+COM9 → Arduino Uno → Status: OK
+
+COM6 is configured as:
+
+115200 baud
+8 data bits
+No parity
+1 stop bit
+
+When I select the COM port and press Connect for a head, the Agent reaches:
+
+Connecting to controller using class:
+JSerialCommConnection with url
+jserialcomm://COM6:115200
+
+Then it hangs there and never completes the connection.
+
+The relevant log is:
+
+Aug 26, 2026 4:09:04 PM
+com.willwinder.universalgcodesender.communicator.AbstractCommunicator connect
+INFO:
+Connecting to controller using class:
+JSerialCommConnection with url
+jserialcomm://COM6:115200
+
+There is no successful connection afterwards.
+
+Please investigate the complete connection flow:
+
+Frontend
+→ API/Agent communication
+→ Machine Agent
+→ UGS Core
+→ JSerialComm
+→ physical COM port
+
+Determine exactly where the connection is getting stuck.
+
+Check both Head 1 and Head 2 connection logic.
+Make sure the selected COM port is actually passed to the correct head/controller.
+Make sure Head 1 and Head 2 are independent and cannot accidentally share the same controller/session.
+
+Do not simply increase timeouts or hide the problem.
+Find the actual cause and fix it.
+
+Also verify that the connection state returned by the Agent is correctly propagated to the frontend.
+
+PROBLEM 2 — FRONTEND SAYS AGENT IS CONNECTED BUT DOES NOT SHOW PORTS:
+
+I also tested another scenario.
+
+I ran only the backend/API side and opened the frontend directly from Replit.
+
+I entered the Machine Agent token into the Machine Controller page.
+
+The frontend reported that the Agent was connected successfully.
+
+However, the available physical COM ports were NOT displayed.
+
+For example, Windows has:
+
+COM6 → Arduino Uno
+COM9 → Arduino Uno
+
+but the frontend did not show these available ports.
+
+This means that Agent health/authentication appears to succeed, but the frontend is not successfully retrieving or displaying:
+
+GET /api/v1/serial-ports
+
+or the corresponding serial-port data.
+
+Please trace this complete flow:
+
+Frontend
+→ Machine Agent URL
+→ authentication/token
+→ GET /api/v1/serial-ports
+→ Agent response
+→ frontend state
+→ port dropdown/list
+
+Find exactly where the data is lost.
+
+IMPORTANT ARCHITECTURE REQUIREMENT:
+
+The Machine Agent is LOCAL ONLY.
+
+It binds to:
+
+127.0.0.1:18888
+
+The Replit/cloud frontend cannot directly access localhost on my Windows computer unless the browser is running locally on that same computer and the frontend is configured correctly.
+
+Therefore, explicitly verify how the frontend determines the Agent URL.
+
+We need the following scenarios to work correctly:
+
+SCENARIO A:
+Frontend running locally on Windows
++
+API running locally
++
+Machine Agent running locally
+→ frontend can communicate with Machine Agent
+→ COM ports are visible
+→ Head 1/Head 2 can connect.
+
+SCENARIO B:
+Frontend opened from Replit/cloud
++
+Machine Agent running on my local Windows PC
+→ clearly handle the localhost/local-agent limitation.
+Do not falsely report "connected" merely because /health is reachable through some unrelated backend/API path.
+The UI must distinguish between:
+- API connected
+- Machine Agent connected
+- serial ports successfully retrieved
+
+Do not conflate these states.
+
+UI REQUIREMENTS:
+
+The Machine Controller UI must clearly show:
+
+1. API connection status
+2. Machine Agent connection status
+3. Serial port discovery status
+4. Available COM ports
+5. Head 1 connection state
+6. Head 2 connection state
+
+If Agent health succeeds but serial-port discovery fails, show that as a separate error.
+
+Do not show "connected" as a global success when the Agent is reachable but serial-port discovery is failing.
+
+HEAD 1 / HEAD 2 REQUIREMENTS:
+
+Everything that works for Head 1 must also work independently for Head 2:
+
+- Port discovery
+- Port selection
+- Connect
+- Disconnect
+- Status
+- DRO
+- Alarm state
+- Console
+- Jog
+- Home
+- Reset
+- Unlock
+- Work zero
+- Work offset
+- Settings
+- G-code streaming
+- Pause
+- Resume
+- Stop
+- Live telemetry
+
+Verify that no frontend code accidentally hardcodes Head 1.
+
+Verify that Head 2 uses its own controller ID/session and selected COM port.
+
+JOG:
+
+There was also a previous Jog problem.
+
+The frontend generated:
+
+$J=G21G91X-100F1000
+
+GRBL rejected it with:
+
+error: Bad number format
+
+Investigate the Jog command generation and formatting.
+Make sure the generated GRBL command is syntactically valid and compatible with the GRBL version being used.
+
+Do not just suppress the error.
+
+CONSOLE REQUIREMENT:
+
+There must be TWO persistent consoles:
+
+Head 1 Console
+Head 2 Console
+
+Each console must belong to its respective head.
+
+The console must NOT disappear or be destroyed when switching between UI sections, scrolling, reconnecting, or receiving new telemetry.
+
+I need to continuously see the console output and follow what is happening.
+
+The console should retain a useful scrollback/history instead of being cleared every time the component rerenders.
+
+UI/UX:
+
+Keep the existing CNC safety behavior.
+
+Do not automatically connect to a machine.
+Do not automatically send motion commands.
+All motion-capable operations must continue requiring explicit confirmation.
+
+Do not remove safety confirmations.
+
+FIRST TASK:
+
+Before making changes, inspect the entire connection architecture and identify:
+
+1. How the frontend obtains the Machine Agent URL.
+2. How the token is stored and sent.
+3. How /health is requested.
+4. How /serial-ports is requested.
+5. How the response is parsed.
+6. How ports are assigned to Head 1/Head 2.
+7. How Connect is implemented.
+8. How the selected port reaches UGS Core.
+9. Why COM6 reaches JSerialCommConnection and then hangs.
+10. Why the Replit frontend can report Agent connected but cannot display the local COM ports.
+
+Then implement the smallest correct fixes.
+
+After fixing, run:
+
+- frontend typecheck
+- frontend production build
+- API typecheck/build
+- Machine Agent Maven build
+- relevant tests
+
+Also test the local frontend + local Agent workflow.
+
+Do not declare the problem fixed merely because the frontend builds.
+The actual connection/discovery flow must be verified.
+
+At the end, give me a concise report containing:
+
+- Root cause of the COM connection hang
+- Root cause of the missing COM ports
+- Root cause of the Jog error
+- Files changed
+- How Head 1 was verified
+- How Head 2 was verified
+- Exact commands required to run the complete project locally on Windows
+- Any limitation when using the Replit/cloud frontend with a localhost-only Machine Agent

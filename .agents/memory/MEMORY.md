@@ -1,0 +1,12 @@
+- [Nominal vs effective gap boundaries](gap-boundary-invariant.md) — contour zone membership must use nominal boundaries; effective boundaries are collision-validator-only.
+- [Arc support — full fix](arc-support.md) — G2/G3 arcs were silently dropped; 6-file fix now parses, projects, partitions, and regenerates arcs faithfully.
+- [Segment-level boundary splitting](segment-splitting.md) — partition engine now splits every linear cut at effective gap boundaries; whole-contour assignment was causing 590mm gap-fill territory instead of 208mm.
+- [Local machine-agent safety](local-machine-agent-safety.md) — desktop control stays loopback-only, per-head, and explicitly confirmed; cloud services never access COM ports.
+- [GRBL limit telemetry](grbl-limit-telemetry.md) — standard GRBL limit reports are axis-level; never present min/max switch identity as verified without controller support.
+- [GRBL command locale safety](grbl-command-locale-safety.md) — controller-bound numeric tokens must be ASCII-invariant, never formatted with the system locale.
+- [Dual-head session readiness](dual-head-session-readiness.md) — report connected only after GRBL init; serialize leases per head and reject duplicate ownership.
+- [Machine-page narrow-width checks](machine-page-narrow-width.md) — validate against the actual main pane, not viewport width; fixed navigation makes 320px materially narrower.
+- [Serial enumeration vs open](serial-open-boundary.md) — a listed COM port may still block in native open; distinguish transport-open from GRBL initialization.
+- [UGS initialization readiness](ugs-initialization-readiness.md) — enable status polling after UGS handshake completion before requiring state to leave CONNECTING.
+- [Agent health vs discovery](agent-health-vs-discovery.md) — unauthenticated health proves reachability only; never conflate it with token validation or COM discovery.
+- [UGS response ownership](ugs-response-ownership.md) — stage transitions must wait for command ACK ownership; orphan GRBL acknowledgements are reported and discarded, never reassigned.

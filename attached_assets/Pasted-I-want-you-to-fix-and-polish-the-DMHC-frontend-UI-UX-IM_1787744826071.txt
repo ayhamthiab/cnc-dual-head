@@ -1,0 +1,337 @@
+I want you to fix and polish the DMHC frontend UI/UX.
+
+IMPORTANT:
+- Work on the FRONTEND/UI only.
+- Do NOT rewrite, remove, or break the API server.
+- Do NOT modify the Machine Agent behavior or GRBL control logic.
+- Do NOT remove any existing feature.
+- Preserve all existing functionality.
+- This is a CNC control application, so clarity, consistency, and safe visual separation between Head 1 and Head 2 are critical.
+
+MAIN UI STRUCTURE:
+
+The Machine Controller page must be organized vertically into TWO clearly separated sections:
+
+========================
+HEAD 1
+========================
+
+All controls, status information, connection controls, DRO, settings, jog controls, console, streaming controls, etc. belonging to Head 1 should be grouped together.
+
+The user should be able to fully operate and monitor Head 1 without anything from Head 2 visually interfering with it.
+
+Then, after the complete Head 1 section:
+
+[clear visual separation / spacing]
+
+========================
+HEAD 2
+========================
+
+Then show the complete Head 2 section below it.
+
+The user should scroll down naturally to reach Head 2.
+
+Do NOT create a layout where Head 1 and Head 2 are mixed horizontally in a way that makes the page difficult to understand.
+
+The page should visually communicate:
+
+HEAD 1
+↓
+all Head 1 controls
+↓
+all Head 1 status/console/controls
+↓
+clear separator
+↓
+HEAD 2
+↓
+all Head 2 controls
+↓
+all Head 2 status/console/controls
+
+The two heads must feel like two independent CNC machines/controllers.
+
+--------------------------------
+RESPONSIVE LAYOUT
+--------------------------------
+
+There are currently layout problems where some elements extend outside their parent/container/range.
+
+Fix all of them.
+
+Requirements:
+
+- Nothing should overflow horizontally.
+- No text, buttons, cards, inputs, tables, consoles, or controls should escape their parent container.
+- Long text must wrap or truncate appropriately.
+- Buttons must remain inside their cards.
+- Inputs must never exceed their container width.
+- Tables must be responsive.
+- Console output must remain inside the console container.
+- DRO/status cards must remain inside their grid.
+- No accidental horizontal scrolling on normal desktop resolutions.
+- The UI must work correctly at 1280px, 1366px, 1440px, 1920px and smaller laptop resolutions.
+- Use responsive CSS/grid/flex correctly instead of hard-coded widths.
+- Avoid fixed pixel widths where they cause overflow.
+
+--------------------------------
+FONT SIZE / DENSITY
+--------------------------------
+
+The current UI feels too large.
+
+Reduce the overall visual density slightly.
+
+Do NOT make the UI tiny.
+
+Use a professional industrial/CNC control-panel style:
+
+- compact typography
+- clear hierarchy
+- readable labels
+- compact buttons
+- compact cards
+- efficient use of vertical space
+- consistent spacing
+
+The goal is to allow the operator to see a lot of information without excessive scrolling while still keeping Head 1 and Head 2 clearly separated vertically.
+
+Pay special attention to:
+
+- headings
+- labels
+- button text
+- DRO values
+- status text
+- console text
+- form controls
+
+Do not blindly scale everything down. Establish a consistent typography hierarchy.
+
+--------------------------------
+HEAD 1 / HEAD 2 VISUAL SEPARATION
+--------------------------------
+
+Make the Head 1 and Head 2 sections visually obvious.
+
+Each head should have:
+
+- clear header/title
+- connection status
+- controller/COM information
+- DRO/status
+- controls
+- Jog
+- Home
+- Reset
+- Unlock
+- settings
+- G-code/stream controls
+- console
+- telemetry/status information
+
+Use consistent component structure for both heads.
+
+Head 2 should be a visual mirror of Head 1 wherever functionality is equivalent.
+
+If a feature exists for Head 1, verify that the corresponding UI exists for Head 2.
+
+Do NOT duplicate functionality incorrectly.
+Use the same reusable components where appropriate, with the head ID passed as state/props.
+
+--------------------------------
+CONSOLE REQUIREMENT
+--------------------------------
+
+VERY IMPORTANT:
+
+There must be TWO independent consoles:
+
+CONSOLE — HEAD 1
+
+and
+
+CONSOLE — HEAD 2
+
+Each console must belong exclusively to its corresponding head.
+
+The consoles must NOT replace each other.
+
+The console must NOT disappear when new messages arrive.
+
+The console must remain visible on the page so the operator can continuously monitor machine activity.
+
+Do NOT implement a console that gets deleted/replaced every time a new message arrives.
+
+The operator must be able to:
+
+- continuously see console history
+- scroll through previous messages
+- see new messages appended
+- distinguish messages belonging to the correct head
+- keep monitoring the console while using other controls
+
+If auto-scroll is implemented, make it operator-friendly:
+- automatically follow new messages when the user is already at the bottom
+- if the user manually scrolls upward, do NOT force-scroll them back to the bottom
+- provide an obvious way to return to the latest messages
+
+Do not clear console history during normal operation.
+
+Do not share Head 1 console state with Head 2.
+
+--------------------------------
+JOG UI
+--------------------------------
+
+There is currently a problem with JOG.
+
+Inspect the existing frontend implementation carefully.
+
+Verify that the Jog UI is correctly connected to the correct head/controller.
+
+For each head:
+
+- Jog X+
+- Jog X-
+- Jog Y+
+- Jog Y-
+- Jog Z+
+- Jog Z-
+- appropriate step/distance selection
+- feed rate
+- confirmation/safety behavior
+
+must work with the selected head.
+
+Do not bypass existing safety confirmations.
+
+Do not change backend safety rules just to make the UI work.
+
+Trace the frontend flow:
+
+UI button
+→ selected head
+→ API request
+→ correct head ID
+→ response/error handling
+→ UI update
+
+Make sure Head 1 Jog cannot accidentally control Head 2 and vice versa.
+
+--------------------------------
+CONNECTION UI
+--------------------------------
+
+Inspect the connection UI carefully.
+
+For both Head 1 and Head 2:
+
+- COM port selection must be clearly associated with that head.
+- Connect button must use the correct head ID.
+- Disconnect button must use the correct head ID.
+- Connection state must update correctly.
+- Loading state must be visible while connecting.
+- Errors must be shown clearly.
+- Do not allow a failed connection attempt to look like a successful connection.
+- Do not silently switch the selected COM port.
+
+Head 2 must have the same functional UI capabilities as Head 1.
+
+--------------------------------
+GENERAL UI/UX RULES
+--------------------------------
+
+Apply professional dashboard/UI principles:
+
+1. Clear visual hierarchy.
+2. Consistent spacing.
+3. Consistent button sizes.
+4. Consistent border radius.
+5. Consistent typography.
+6. Consistent status indicators.
+7. Strong distinction between normal status and warnings/errors.
+8. Avoid unnecessary visual clutter.
+9. Keep dangerous CNC actions visually obvious.
+10. Do not hide safety confirmations.
+11. Do not remove existing safety mechanisms.
+12. Avoid excessive animations.
+13. Avoid layout shifts.
+14. Make loading states obvious.
+15. Make errors actionable and readable.
+16. Make disabled states obvious.
+17. Keep related controls together.
+18. Do not mix unrelated controls in the same card.
+19. Keep Head 1 and Head 2 completely understandable as independent machines.
+
+--------------------------------
+RESPONSIVE BEHAVIOR
+--------------------------------
+
+Desktop:
+- Use the available width efficiently.
+- Keep content centered.
+- Avoid giant empty areas.
+- Keep cards aligned.
+
+Laptop:
+- Everything must fit inside the viewport.
+- Reduce spacing when necessary.
+- Avoid horizontal overflow.
+
+Smaller screens:
+- Cards should stack naturally.
+- Grids should collapse cleanly.
+- Buttons should remain usable.
+- Consoles should remain readable.
+- No content should be clipped.
+
+--------------------------------
+IMPORTANT IMPLEMENTATION RULE
+--------------------------------
+
+Before changing anything:
+
+1. Inspect the existing Machine Controller frontend.
+2. Identify all Head 1 functionality.
+3. Identify all Head 2 functionality.
+4. Compare them feature-by-feature.
+5. Identify why Head 2 connection/Jog UI is not behaving correctly.
+6. Identify all layout overflow problems.
+7. Identify why console history may disappear/re-render incorrectly.
+8. Then implement the fixes.
+
+Do not guess.
+
+Trace the existing code and API calls.
+
+--------------------------------
+ACCEPTANCE CRITERIA
+--------------------------------
+
+The work is complete only when:
+
+✓ Head 1 has a complete, clean section.
+✓ Head 2 has a complete, clean section below Head 1.
+✓ Scrolling naturally moves from Head 1 to Head 2.
+✓ Nothing overflows its parent container.
+✓ No unexpected horizontal overflow.
+✓ Font sizes are more compact and professional.
+✓ Head 1 and Head 2 are visually distinct.
+✓ All Head 1 features have corresponding Head 2 UI where applicable.
+✓ Head 2 connection UI correctly targets Head 2.
+✓ Jog UI correctly targets the selected head.
+✓ Head 1 and Head 2 have independent consoles.
+✓ Console history is preserved.
+✓ New console messages are appended rather than replacing the console.
+✓ Operator can scroll through console history.
+✓ Console does not forcibly jump to bottom when operator is reading older messages.
+✓ Existing safety confirmations remain intact.
+✓ No existing functionality is removed.
+✓ No API contract is unnecessarily changed.
+✓ No Machine Agent behavior is changed.
+✓ Typecheck passes.
+✓ Production build passes.
+
+After implementation, test the entire Machine Controller page from top to bottom and verify Head 1 and Head 2 independently.

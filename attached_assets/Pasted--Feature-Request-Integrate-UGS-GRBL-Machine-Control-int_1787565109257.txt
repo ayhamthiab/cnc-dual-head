@@ -1,0 +1,782 @@
+# Feature Request: Integrate UGS/GRBL Machine Control into the Existing CNC Middleware
+
+## Important Instruction
+
+**DO NOT IMPLEMENT ANYTHING YET.**
+
+This prompt is only for studying the existing project and determining whether the requested feature can realistically be implemented.
+
+Before making any code changes, provide a detailed feasibility analysis and architecture proposal.
+
+---
+
+# 1. Existing Project
+
+The current software is a CNC Middleware application.
+
+Its current workflow is:
+
+```text
+Original G-code
+      │
+      ▼
+React Frontend
+      │
+      ▼
+Node.js / TypeScript API Server
+      │
+      ▼
+Python Geometry Engine
+      │
+      ├── Parse G-code
+      ├── Analyze geometry
+      ├── Detect gap
+      ├── Partition paths
+      ├── Generate Head 1 G-code
+      ├── Generate Head 2 G-code
+      ├── Generate Gap Fill G-code
+      ├── Verify output
+      └── Post-process / Axis Inversion
+      │
+      ▼
+Generated G-code files
+      ├── Head 1
+      ├── Head 2
+      └── Gap Fill
+```
+
+The existing application already has:
+
+* React
+* TypeScript
+* Vite
+* Tailwind
+* Node.js
+* Express
+* Python
+* REST API
+* Job management
+* G-code generation
+* G-code visualization
+* Manual G-code editing
+* File download
+* Axis inversion
+* Verification
+
+The existing architecture should be preserved.
+
+Do not replace the current G-code processing architecture.
+
+---
+
+# 2. New Required Feature
+
+I want to add a **Machine Control / GRBL Control** feature to this application.
+
+The goal is to make the application capable of controlling an Arduino running GRBL through a serial connection.
+
+However, I do NOT want to build a complete CNC controller from scratch.
+
+Instead, I want to reuse the existing **Universal Gcode Sender (UGS)** open-source implementation/APIs/components wherever technically possible.
+
+The key idea is:
+
+```text
+My Existing Application
+        │
+        ├── G-code generation
+        ├── G-code processing
+        ├── Head 1 / Head 2 / Gap Fill
+        └── Machine Control UI
+                 │
+                 ▼
+        UGS / UGS-compatible
+        control implementation
+                 │
+                 ▼
+             Serial
+                 │
+                 ▼
+        Arduino + GRBL
+                 │
+                 ▼
+             CNC Machine
+```
+
+---
+
+# 3. Main Requirement
+
+I want my software to be able to perform the same type of machine-control operations that UGS performs.
+
+The application should ideally be able to:
+
+### Serial Connection
+
+* Detect/select serial port
+* Select baud rate
+* Connect to Arduino/GRBL
+* Disconnect
+* Detect connection state
+* Handle connection errors
+
+### G-code Streaming
+
+The application should be able to send the generated G-code directly to GRBL.
+
+For example:
+
+```text
+Generated Head 1 G-code
+        │
+        ▼
+Machine Control
+        │
+        ▼
+Serial
+        │
+        ▼
+Arduino + GRBL
+```
+
+The user should not have to manually download the G-code and then open UGS separately.
+
+---
+
+# 4. Machine Commands
+
+The application should support GRBL commands such as:
+
+```text
+$H
+```
+
+for homing.
+
+It should also be possible to send other GRBL/system commands and manual G-code commands.
+
+Examples:
+
+```text
+$H
+$$
+$#
+$G
+$I
+?
+G0 X0 Y0
+G1 X100 Y100 F1000
+```
+
+The exact supported command set should be determined from the UGS/GRBL implementation and GRBL protocol.
+
+Do not assume unsupported commands.
+
+---
+
+# 5. Homing
+
+A major requirement is to support machine homing.
+
+For example:
+
+```text
+User clicks HOME
+        │
+        ▼
+Application
+        │
+        ▼
+UGS/GRBL control layer
+        │
+        ▼
+$H
+        │
+        ▼
+Arduino + GRBL
+        │
+        ▼
+Limit switches
+        │
+        ▼
+Machine homes
+```
+
+The application should be able to monitor the homing process and determine when the controller reports that homing is complete or when an alarm/error occurs.
+
+---
+
+# 6. Machine Status
+
+The application should ideally display the machine state.
+
+Examples:
+
+```text
+Idle
+Run
+Hold
+Jog
+Alarm
+Door
+Check
+Home
+Sleep
+Disconnected
+```
+
+It should also ideally display:
+
+* Machine position
+* Work position
+* Connection status
+* Current command
+* Current execution state
+* Errors
+* GRBL alarms
+* Streaming progress
+
+The exact capabilities should be determined from the existing UGS implementation.
+
+---
+
+# 7. Run / Pause / Resume / Stop
+
+The application should support:
+
+### Run
+
+Start streaming a G-code file to GRBL.
+
+### Pause / Hold
+
+Pause the machine using the appropriate GRBL/UGS mechanism.
+
+### Resume
+
+Continue execution.
+
+### Stop / Abort
+
+Safely stop the current operation according to GRBL/UGS behavior.
+
+The implementation must follow the established GRBL protocol rather than inventing a new protocol.
+
+---
+
+# 8. Jogging
+
+If supported by the UGS implementation, the application should provide jogging functionality.
+
+For example:
+
+```text
+X+
+X-
+Y+
+Y-
+Z+
+Z-
+```
+
+with configurable jog distance and feed rate.
+
+Example:
+
+```text
+X +10 mm
+Y -10 mm
+Z +1 mm
+```
+
+Again, investigate how UGS implements jogging and reuse the existing implementation where possible.
+
+---
+
+# 9. The Most Important Architectural Requirement
+
+I do NOT want to duplicate UGS functionality manually.
+
+I do NOT want to create my own complete implementation of:
+
+* Serial communication
+* GRBL protocol
+* G-code streaming
+* Buffer management
+* Flow control
+* GRBL status parsing
+* Alarm handling
+* Jogging
+* Homing
+* Pause/resume
+* Controller state management
+
+if these capabilities already exist in UGS's open-source code.
+
+The preferred architecture is to reuse or integrate the existing UGS implementation.
+
+---
+
+# 10. Critical Question
+
+Before implementing anything, investigate the UGS open-source project and determine:
+
+## Can UGS actually be integrated into this existing application as a reusable backend/control layer?
+
+Specifically investigate:
+
+1. Is there a reusable UGS API?
+2. Is there a Java library/module that can be embedded?
+3. Can UGS's controller classes be used independently from the UGS GUI?
+4. Can the GRBL controller implementation be reused independently?
+5. Can the serial communication layer be reused?
+6. Can G-code streaming be controlled programmatically?
+7. Can commands such as `$H` be sent programmatically?
+8. Can machine status be retrieved programmatically?
+9. Can alarms/errors be received programmatically?
+10. Can jogging be triggered programmatically?
+11. Can pause/resume/stop be triggered programmatically?
+12. What parts of UGS are tightly coupled to its GUI?
+13. What parts are reusable backend components?
+14. What dependencies would need to be added to this project?
+15. Is UGS licensed in a way that allows this type of integration?
+16. Would integrating UGS require changing the current Node.js architecture?
+17. Would it be better to create a small Java service around UGS?
+18. Could the existing Node.js API Server communicate with a UGS-based Java service?
+19. Is there another official/recommended UGS integration mechanism?
+20. Is there a simpler way to reuse UGS without embedding the entire application?
+
+---
+
+# 11. Preferred Architecture
+
+Investigate whether an architecture similar to this is possible:
+
+```text
+┌─────────────────────────────────────────────┐
+│              React Frontend                 │
+│                                             │
+│  G-code Processing UI                       │
+│  Machine Control UI                         │
+│  Serial Port UI                             │
+│  Home / Run / Pause / Stop / Jog            │
+└──────────────────────┬──────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────┐
+│       Existing Node.js API Server           │
+│                                             │
+│  Existing APIs                              │
+│  +                                           │
+│  Machine Control APIs                       │
+└──────────────────────┬──────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────┐
+│       UGS-based Machine Control Layer       │
+│                                             │
+│  Reused UGS/GRBL components                 │
+│  Serial communication                       │
+│  Streaming                                  │
+│  Status handling                            │
+│  Commands                                   │
+│  Homing                                     │
+│  Jogging                                    │
+│  Pause/Resume/Stop                          │
+└──────────────────────┬──────────────────────┘
+                       │
+                    Serial
+                       │
+                       ▼
+              ┌─────────────────┐
+              │ Arduino + GRBL  │
+              └────────┬────────┘
+                       │
+                       ▼
+                   CNC Machine
+```
+
+However, this is only a proposed architecture.
+
+**Do not assume that this architecture is technically possible. Verify it first.**
+
+---
+
+# 12. Alternative Architecture
+
+If UGS cannot be directly embedded into the Node.js backend, investigate whether this architecture is better:
+
+```text
+React
+  │
+  ▼
+Node.js API
+  │
+  ▼
+UGS Java Service
+  │
+  ▼
+UGS GRBL Controller
+  │
+  ▼
+Serial
+  │
+  ▼
+Arduino + GRBL
+```
+
+The Java service could expose a local API such as:
+
+```text
+POST /connect
+POST /disconnect
+POST /home
+POST /send-command
+POST /stream
+POST /pause
+POST /resume
+POST /stop
+POST /jog
+GET  /status
+GET  /position
+GET  /ports
+```
+
+But again:
+
+**Do not implement this yet. Determine whether it is necessary and technically sound first.**
+
+---
+
+# 13. Integration With Existing G-code Pipeline
+
+The new feature must integrate with the current processing pipeline.
+
+Currently:
+
+```text
+Original G-code
+      │
+      ▼
+Processing
+      │
+      ├── Head 1
+      ├── Head 2
+      └── Gap Fill
+```
+
+The new system should eventually allow:
+
+```text
+Original G-code
+      │
+      ▼
+Processing
+      │
+      ├── Head 1
+      ├── Head 2
+      └── Gap Fill
+             │
+             ▼
+       Machine Control
+             │
+             ▼
+        Arduino + GRBL
+```
+
+The user should be able to select which generated file to send to the machine.
+
+For example:
+
+```text
+[ Head 1 ] [ Send to Machine ]
+
+[ Head 2 ] [ Send to Machine ]
+
+[ Gap Fill ] [ Send to Machine ]
+```
+
+The exact UI should be proposed only after understanding the existing frontend architecture.
+
+---
+
+# 14. Multi-Head Consideration
+
+This project uses two physical heads.
+
+Therefore, investigate an important architectural question:
+
+Can the UGS-based control layer manage:
+
+```text
+Arduino/GRBL #1 → Head 1
+Arduino/GRBL #2 → Head 2
+```
+
+as two independent serial controllers?
+
+Potentially:
+
+```text
+                    Node.js
+                       │
+             ┌─────────┴─────────┐
+             ▼                   ▼
+       UGS Controller 1     UGS Controller 2
+             │                   │
+          Serial 1            Serial 2
+             │                   │
+        Arduino #1          Arduino #2
+          GRBL                 GRBL
+             │                   │
+          Head 1              Head 2
+```
+
+Determine whether UGS can support this architecture programmatically.
+
+Also determine whether both controllers can operate simultaneously.
+
+This is important because the existing project intentionally generates Head 1 and Head 2 as separate G-code outputs and is designed around parallel operation.
+
+---
+
+# 15. Gap Fill
+
+The third generated file is:
+
+```text
+Gap Fill
+```
+
+The machine-control layer should eventually allow:
+
+```text
+Head 1
+   ↓
+Head 2
+   ↓
+Gap Fill
+```
+
+or, if technically possible:
+
+```text
+Head 1 ─────────┐
+                ├── parallel execution
+Head 2 ─────────┘
+        ↓
+    Gap Fill
+```
+
+Investigate whether the UGS integration can support this execution model.
+
+Do not change the existing scheduling logic before analyzing the requirements.
+
+---
+
+# 16. Safety Requirements
+
+The machine-control feature must be designed carefully.
+
+The application must never silently send unexpected motion commands.
+
+The architecture should provide:
+
+* Clear connection state
+* Clear machine state
+* Emergency stop/abort handling where supported
+* Confirmation where appropriate
+* Error reporting
+* GRBL alarm reporting
+* Streaming state
+* Prevention of accidental duplicate streaming
+* Proper serial disconnect handling
+* No automatic motion unless explicitly requested
+* No automatic homing unless explicitly requested
+
+Do not implement safety-critical behavior differently from the established UGS/GRBL behavior without a strong reason.
+
+---
+
+# 17. Source Code Investigation
+
+Before making any modifications, inspect the existing project structure.
+
+Identify:
+
+```text
+Frontend
+Backend
+Python engine
+API definitions
+Job system
+G-code generation
+G-code visualization
+File handling
+```
+
+Then investigate the UGS source architecture.
+
+Identify the relevant UGS modules/classes responsible for:
+
+```text
+Serial communication
+Controller abstraction
+GRBL controller
+G-code streaming
+Command sending
+Status parsing
+Jogging
+Homing
+Pause/Resume
+Error handling
+Machine state
+```
+
+Provide the exact relevant classes/modules if possible.
+
+---
+
+# 18. Do Not Rewrite Existing Architecture
+
+Do not:
+
+* Replace React
+* Replace Node.js
+* Replace Python
+* Rewrite the G-code engine
+* Rewrite the geometry engine
+* Rewrite the existing APIs unnecessarily
+* Build a new CNC controller from scratch
+* Create a second independent GRBL protocol implementation if UGS can provide it
+
+The goal is **integration**, not rewriting.
+
+---
+
+# 19. Deliverable Before Implementation
+
+Before modifying any code, provide a detailed report with:
+
+## A. Feasibility
+
+Answer clearly:
+
+> Can this feature be implemented using UGS's existing open-source implementation?
+
+Answer:
+
+```text
+YES / NO / YES WITH MODIFICATIONS
+```
+
+and explain why.
+
+## B. Recommended Architecture
+
+Show the final recommended architecture as a diagram.
+
+## C. UGS Components
+
+List the exact UGS components/classes/modules that could be reused.
+
+## D. Integration Method
+
+Explain whether the best approach is:
+
+```text
+Option 1:
+Embed UGS components directly
+
+Option 2:
+Create a Java UGS service
+
+Option 3:
+Create another adapter around UGS
+
+Option 4:
+Another approach
+```
+
+Choose the best option and explain why.
+
+## E. Required Changes
+
+List exactly which existing project files/modules would need to change.
+
+Do not modify them yet.
+
+## F. New Components
+
+List any new services, modules, APIs, or files that would need to be created.
+
+## G. API Design
+
+Propose the APIs that the frontend would eventually use.
+
+For example:
+
+```text
+GET  /api/machine/ports
+POST /api/machine/connect
+POST /api/machine/disconnect
+GET  /api/machine/status
+GET  /api/machine/position
+POST /api/machine/home
+POST /api/machine/command
+POST /api/machine/jog
+POST /api/machine/stream
+POST /api/machine/pause
+POST /api/machine/resume
+POST /api/machine/stop
+```
+
+These are examples only. Adjust them according to the actual architecture.
+
+## H. Multi-Controller Support
+
+Explain how two Arduino + GRBL controllers could be managed.
+
+## I. Risks
+
+List technical risks and limitations.
+
+## J. Licensing
+
+Verify the UGS open-source license and explain any implications of embedding or redistributing its code/components in this project.
+
+## K. Implementation Plan
+
+Provide a step-by-step implementation plan.
+
+But DO NOT execute the plan yet.
+
+---
+
+# 20. Final Rule
+
+**DO NOT CHANGE ANY FILES.**
+
+**DO NOT WRITE IMPLEMENTATION CODE.**
+
+**DO NOT INSTALL DEPENDENCIES.**
+
+**DO NOT START IMPLEMENTATION.**
+
+First, inspect the current project and investigate UGS.
+
+Then return the feasibility analysis and recommended architecture.
+
+After I review your analysis and approve the architecture, I will give you a second prompt authorizing implementation.
+
+The second prompt will be the implementation phase.
+
+The current task is strictly:
+
+```text
+UNDERSTAND → INVESTIGATE → ANALYZE → PROPOSE
+
+NOT:
+
+UNDERSTAND → IMPLEMENT
+```

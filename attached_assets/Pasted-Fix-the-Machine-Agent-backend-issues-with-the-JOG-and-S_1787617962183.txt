@@ -1,0 +1,226 @@
+Fix the Machine Agent backend issues with the JOG and Set Work Offset features. 
+ 
+1. JOG is currently not working correctly. 
+The frontend sends a JOG request, but the generated command reaching the GRBL simulator has an invalid/malformed format. 
+ 
+The log currently looks like: 
+SERIAL -> TCP: b'J=G21G91X?Y??Z?F????\n' 
+ 
+This is NOT valid GRBL JOG syntax. 
+ 
+Use the proper GRBL 1.1 jog command format. For example: 
+$J=G21G91X10F1000 
+or: 
+$J=G21G91Y-10F1000 
+ 
+The backend must construct the command from the requested axis, direction, distance, feed rate, and units without inserting invalid characters or corrupting the command. 
+ 
+Make sure: 
+- X/Y/Z values are optional and only the selected axis is included. 
+- Positive/negative directions are preserved. 
+- Distance is numeric and properly formatted. 
+- Feed rate is numeric. 
+- The command ends with \n. 
+- The command is sent through the UGS Core GrblController/communicator correctly. 
+- Do NOT manually concatenate malformed strings. 
+- Validate the final command before sending it. 
+- Return a clear API error if the JOG request is invalid. 
+ 
+2. Fix the "Set Work Offset" feature. 
+ 
+The frontend allows the operator to enter values, but currently the values do not actually modify the machine/work coordinates. 
+ 
+Implement this correctly using GRBL-supported coordinate offset commands. 
+ 
+IMPORTANT: 
+There are two different concepts and they must NOT be confused: 
+ 
+A. Machine Position (MPos) 
+The physical machine coordinate reported by GRBL. 
+The software must NOT pretend that MPos changed when the user changes the work coordinate system. 
+ 
+B. Work Position (WPos) 
+The coordinate system used by the operator/program. 
+The user should be able to redefine the current physical position as a desired work coordinate. 
+ 
+For example: 
+Current: 
+MPos = X10 Y20 Z0 
+WPos = X10 Y20 Z0 
+ 
+User enters: 
+X=0 
+Y=0 
+Z=0 
+ 
+After applying the work offset, the physical machine has NOT moved. 
+MPos remains unchanged. 
+ 
+Only the work coordinate system should change so that the current physical position is interpreted as: 
+WPos = X0 Y0 Z0. 
+ 
+Use the correct GRBL mechanism for setting the work coordinate offset, such as G10 L20 / the appropriate GRBL-supported command, rather than trying to directly overwrite the reported machine position. 
+ 
+3. The Set Work Offset UI must support: 
+- X 
+- Y 
+- Z 
+- Set only selected axes 
+- Set current position to zero 
+- Set current position to an arbitrary user-defined work coordinate 
+- Clear/reset the work offset if supported 
+- Show the resulting MPos and WPos after the operation 
+ 
+Example: 
+ 
+Current machine position: 
+MPos X=10 
+MPos Y=25 
+MPos Z=0 
+ 
+User chooses: 
+Set Work Position: 
+X=0 
+Y=0 
+Z=0 
+ 
+Expected result: 
+MPos remains: 
+X=10 Y=25 Z=0 
+ 
+WPos becomes: 
+X=0 Y=0 Z=0 
+ 
+No physical movement must occur. 
+ 
+4. Verify the implementation end-to-end. 
+ 
+Test the complete chain: 
+ 
+Frontend 
+→ HTTP API 
+→ Machine Agent 
+→ UGS Core 
+→ GrblController 
+→ Serial communicator 
+→ GRBL simulator 
+ 
+For JOG, verify the exact command received by the simulator. 
+ 
+For Set Work Offset, verify that: 
+- the command is valid GRBL syntax, 
+- GRBL accepts it, 
+- MPos does not change, 
+- WPos changes correctly, 
+- the backend status endpoint reports the updated coordinates, 
+- SSE telemetry also reports the updated coordinates. 
+ 
+Do not only modify the frontend to make it appear successful. The actual GRBL/UGS backend behavior must be correct. 
+ 
+After implementing the fixes, run the existing tests and add backend tests for: 
+- valid JOG command generation, 
+- invalid JOG input, 
+- positive/negative X/Y/Z jog, 
+- Set Work Offset to zero, 
+- Set Work Offset to arbitrary coordinates, 
+- setting only one axis, 
+- verifying MPos remains unchanged, 
+- verifying WPos changes correctly. 
+ 
+Finally, give me a report containing: 
+1. Files changed. 
+2. Exact cause of the JOG problem. 
+3. Exact cause of the Set Work Offset problem. 
+4. The GRBL commands now being generated. 
+5. Tests performed and their results. 
+6. Any remaining limitations. 
+
+----------
+
+There is still a serious command formatting bug in the Machine Agent.
+
+The Set Work Offset command currently reaches the GRBL simulator as:
+
+10 P0 L20 X??Y??Z??
+
+This is invalid GRBL syntax and causes:
+
+error:2
+
+The command MUST be generated exactly in valid GRBL format.
+
+For example:
+
+G10 P0 L20 X0 Y0 Z0
+
+or when only X is selected:
+
+G10 P0 L20 X0
+
+or:
+
+G10 P0 L20 Y0
+
+or:
+
+G10 P0 L20 Z0
+
+Do NOT send:
+10 P0 L20...
+Do NOT send:
+X??Y??Z??
+Do NOT use placeholders, question marks, or corrupted/missing characters.
+
+Investigate the actual backend command-construction code. Do not only change the frontend.
+
+Add a single centralized command builder, for example:
+
+buildSetWorkOffsetCommand(x, y, z)
+
+It must:
+- Start with exactly `G10`
+- Include `P0`
+- Include `L20`
+- Append only axes that were actually provided
+- Format numeric values correctly
+- Separate parameters with spaces
+- End with `\n`
+
+Examples:
+
+Input:
+X=0, Y=0, Z=0
+
+Output:
+G10 P0 L20 X0 Y0 Z0\n
+
+Input:
+X=0, Y=null, Z=null
+
+Output:
+G10 P0 L20 X0\n
+
+Input:
+X=10.5, Y=-20, Z=0
+
+Output:
+G10 P0 L20 X10.5 Y-20 Z0\n
+
+IMPORTANT:
+Log the exact command string immediately before it is passed to UGS/GrblController, using a safe debug log such as:
+
+SET_WORK_OFFSET_COMMAND = [G10 P0 L20 X0 Y0 Z0]
+
+Then verify the exact bytes/characters received by the simulator.
+
+Also investigate why characters are being transformed into `??` and why `G` is missing from `G10`.
+
+This indicates the problem may be occurring in the request parsing, string construction, encoding, or command sanitization layer.
+
+Do NOT consider this feature fixed until the simulator receives the exact valid command:
+
+G10 P0 L20 X0 Y0 Z0
+
+and returns `ok`.
+
+Apply the same strict command-format validation to JOG as well.
